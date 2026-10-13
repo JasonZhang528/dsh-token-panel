@@ -55,6 +55,16 @@ ok("弹窗样式已定义", c.includes("const MODAL_CSS = `"));
 ok("样式合并注入", c.includes("CSS + MODAL_CSS"));
 ok("视图内重复标题被隐藏", c.includes(".ust-panelBody .ust-page-title{display:none}"));
 
+section("客户端：本次改动");
+ok("区块标题为「活跃热力图」", c.includes("活跃热力图"));
+ok("无「活跃分布」残留", !c.includes("活跃分布"));
+ok("默认区间为今天", c.includes('react.useState({ id: "today" })'));
+ok("入口行高 42px（对齐设置菜单）", c.includes("height:42px"));
+ok("入口圆角 12px", c.includes("border-radius:12px"));
+ok("入口字号 14px", c.includes("font-size:14px"));
+ok("入口整行宽（width:100%）", c.includes("width:100%"));
+ok("窄栏形态保留", c.includes("ust-fabBtn--rail"));
+
 section("客户端：数据与外壳");
 ok("数据源为 /api/usage-stats", c.includes('fetch("/api/usage-stats"'));
 ok("exports.apply 完好", c.includes("exports.apply = apply;"));

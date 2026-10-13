@@ -151,11 +151,11 @@ window.__ModuleLoader__.load({
 
 		// ---------- 弹窗样式（对齐 dsh-token-usage 的展示方式） ----------
 		const MODAL_CSS = `
-/* 侧边栏入口按钮 */
-.ust-fab{position:relative}
-.ust-fabBtn{min-width:0;height:32px;box-sizing:border-box;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:transparent;border:0;border-radius:8px;align-items:center;justify-content:center;gap:6px;padding:0 10px;font:inherit;font-size:13px;line-height:18px;display:flex;transition:color .15s ease,background-color .15s ease}
-.ust-fabBtn:hover,.ust-fabBtn:focus-visible{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}
-.ust-fabBtn--rail{width:32px;padding:0}
+/* 侧边栏入口：对齐左下角「设置」菜单行的形态（整行 260x42 / 圆角 12 / 14px / gap 8） */
+.ust-fab{position:relative;display:flex;margin:4px -2px}
+.ust-fabBtn{min-width:0;width:100%;height:42px;box-sizing:border-box;color:var(--dsw-alias-label-primary,#0f1115);cursor:pointer;background:transparent;border:0;border-radius:12px;padding:0 10px 0 8px;font:inherit;font-size:14px;line-height:22px;display:flex;align-items:center;gap:8px;transition:color .15s ease,background-color .15s ease}
+.ust-fabBtn:hover,.ust-fabBtn:focus-visible{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}
+.ust-fabBtn--rail{width:42px;height:42px;padding:0;justify-content:center;margin:0 auto}
 .ust-fabLabel{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ust-fabIco{display:inline-flex;width:16px;height:16px;flex:none}
 .ust-fabIco svg{width:100%;height:100%}
@@ -252,7 +252,7 @@ window.__ModuleLoader__.load({
 			return [place, clear, el];
 		}
 
-		// ---------- 1) 活跃分布 ----------
+		// ---------- 1) 活跃热力图 ----------
 		// 日历点阵：一格一天，点面积 = 当天用量（sqrt 换算，面积才与数值成正比）
 		const HEAT_MODES = [
 			{ id: "daily", label: "每日" },
@@ -436,7 +436,7 @@ window.__ModuleLoader__.load({
 			return element("div", { className: "ust-block" },
 				element("div", { className: "ust-block-head" },
 					element("div", null,
-						element("h2", { className: "ust-h2" }, "活跃分布"),
+						element("h2", { className: "ust-h2" }, "活跃热力图"),
 						element("div", { className: "ust-sub" }, caption),
 						element("div", { className: "ust-scale" },
 							element("span", { className: "ust-scale-lab" }, "少"),
@@ -456,7 +456,7 @@ window.__ModuleLoader__.load({
 				),
 				element("div", { ref: boxRef },
 					element("div", { className: "ust-plot" + (scrolls ? " is-scroll" : ""), ref: scrollRef },
-						boxW > 0 ? element("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "活跃分布热力图" },
+						boxW > 0 ? element("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "活跃热力图热力图" },
 							wdAxis, marks2, marks, peakMark,
 						) : null,
 					),
@@ -744,7 +744,7 @@ window.__ModuleLoader__.load({
 			const [data, setData] = react.useState(null);
 			const [error, setError] = react.useState(null);
 			const [loading, setLoading] = react.useState(true);
-			const [range, setRange] = react.useState({ id: "last30" });
+			const [range, setRange] = react.useState({ id: "today" });
 			const [showCustom, setShowCustom] = react.useState(false);
 			const [from, setFrom] = react.useState("");
 			const [to, setTo] = react.useState("");

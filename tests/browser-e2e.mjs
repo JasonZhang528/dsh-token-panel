@@ -76,6 +76,15 @@ results["弹窗未打开时页面无残留"] = true;
   results["区间标签可用"] = closing.tabs > 5;
   results["切换区间后重新渲染"] = typeof closing.afterTab === "string" && closing.afterTab.length > 10;
 
+  // 本次改动：区块标题 / 默认区间 / 入口形态
+  const changes = JSON.parse(await ev("async () => { window.dispatchEvent(new KeyboardEvent(\"keydown\",{key:\"Escape\",bubbles:true})); await new Promise(r=>setTimeout(r,1200)); document.querySelector(\".ust-fabBtn\").click(); await new Promise(r=>setTimeout(r,4000)); const b=document.querySelector(\".ust-panelBody\"); const h2=[...b.querySelectorAll(\"h2\")].map(x=>x.textContent.trim()); const active=[...b.querySelectorAll(\".ust-tab.active\")].map(x=>x.textContent.trim()); const btn=document.querySelector(\".ust-fabBtn\"); const cs=getComputedStyle(btn); return JSON.stringify({ headings: h2, activeTabs: active, btnH: cs.height, btnRadius: cs.borderRadius, btnFont: cs.fontSize }); }"));
+  console.log("CHANGES " + JSON.stringify(changes));
+  results["区块标题为「活跃热力图」"] = Array.isArray(changes.headings) && changes.headings.includes("活跃热力图");
+  results["默认选中「今天」"] = Array.isArray(changes.activeTabs) && changes.activeTabs.includes("今天");
+  results["入口行高 42px"] = changes.btnH === "42px";
+  results["入口圆角 12px"] = changes.btnRadius === "12px";
+  results["入口字号 14px"] = changes.btnFont === "14px";
+
   // 控制台
   const msgs = String((await mcp.callTool({ name: "list_console_messages", arguments: { pageId } })).content?.[0]?.text ?? "");
   results["浏览器控制台无报错"] = /no console messages found/i.test(msgs);
