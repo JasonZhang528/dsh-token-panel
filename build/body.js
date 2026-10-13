@@ -1,4 +1,4 @@
-// dsh-token-panel —— 使用统计(客户端)
+// dsh-token-panel —— Token使用统计(客户端)
 // 排版：固定 px 字阶、WCAG 对比度达标、4 的倍数间距阶梯
 // 图表：日历点阵 / 发丝折线 / 刻度环，配色与排版自研
 // 关键：按实测容器宽度 1:1 出图，不做 viewBox 缩放（缩放会让小字号变成看不见）
@@ -151,8 +151,8 @@ window.__ModuleLoader__.load({
 
 		// ---------- 弹窗样式（对齐 dsh-token-usage 的展示方式） ----------
 		const MODAL_CSS = `
-/* 侧边栏入口：对齐左下角「设置」菜单行的形态（整行 260x42 / 圆角 12 / 14px / gap 8） */
-.ust-fab{position:relative;display:flex;margin:4px -2px}
+/* 侧边栏入口：与左下角用户菜单同宽同高（铺满 footerActions 行） */
+.ust-fab{position:relative;display:flex;flex:1 1 100%;min-width:0;margin:4px -2px}
 .ust-fabBtn{min-width:0;width:100%;height:42px;box-sizing:border-box;color:var(--dsw-alias-label-primary,#0f1115);cursor:pointer;background:transparent;border:0;border-radius:12px;padding:0 10px 0 8px;font:inherit;font-size:14px;line-height:22px;display:flex;align-items:center;gap:8px;transition:color .15s ease,background-color .15s ease}
 .ust-fabBtn:hover,.ust-fabBtn:focus-visible{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}
 .ust-fabBtn--rail{width:42px;height:42px;padding:0;justify-content:center;margin:0 auto}
@@ -256,6 +256,8 @@ window.__ModuleLoader__.load({
 		// 日历点阵：一格一天，点面积 = 当天用量（sqrt 换算，面积才与数值成正比）
 		// 只保留「每日」一种展示：一格一天
 		const WD = ["日", "一", "二", "三", "四", "五", "六"];
+		// 自动刷新可选的间隔（秒）
+		const AUTO_OPTIONS = [5, 10, 30, 60];
 
 		function Heatmap({ days, window: wnd }) {
 			const [boxRef, boxW] = useMeasure();
@@ -695,6 +697,9 @@ window.__ModuleLoader__.load({
 			const [showCustom, setShowCustom] = react.useState(false);
 			const [from, setFrom] = react.useState("");
 			const [to, setTo] = react.useState("");
+			// 自动刷新：默认开启，默认 5 秒
+			const [autoRefresh, setAutoRefresh] = react.useState(true);
+			const [autoEvery, setAutoEvery] = react.useState(5);
 
 			const load = react.useCallback(async (force) => {
 				setLoading(true);
@@ -712,6 +717,13 @@ window.__ModuleLoader__.load({
 			}, []);
 
 			react.useEffect(() => { load(false); }, [load]);
+
+			// 自动刷新：定时重新拉取（不强制重扫，走服务端 SWR 缓存）
+			react.useEffect(() => {
+				if (!autoRefresh) return;
+				const id = setInterval(() => { load(false); }, Math.max(1, autoEvery) * 1000);
+				return () => clearInterval(id);
+			}, [autoRefresh, autoEvery, load]);
 
 			const days = (data && data.days) || [];
 			const hasData = days.length > 0;
@@ -752,7 +764,7 @@ window.__ModuleLoader__.load({
 			return element("div", { className: "ust-root" },
 				element(SummaryMetrics, { summary: data.summary }),
 				element("div", { className: "ust-header" },
-					element("h1", { className: "ust-page-title" }, "使用统计"),
+					element("h1", { className: "ust-page-title" }, "Token使用统计"),
 					element("div", { className: "ust-rangebox" },
 						element("div", { className: "ust-tabs", role: "tablist" },
 							RANGES.map((r) => element("span", {
@@ -801,6 +813,24 @@ window.__ModuleLoader__.load({
 					element("div", { className: "ust-meta" },
 						loading ? "正在重新扫描全部会话…" : (data.generatedAt ? "数据更新于 " + fmtClock(data.generatedAt) : ""),
 					),
+					element("div", { className: "ust-auto" },
+						element("label", { className: "ust-autoToggle", title: "开启后按所选间隔自动刷新数据" },
+							element("input", {
+								type: "checkbox",
+								className: "ust-autoCheck",
+								checked: autoRefresh,
+								onChange: (e) => setAutoRefresh(e.target.checked),
+							}),
+							element("span", null, "自动刷新"),
+						),
+						autoRefresh ? element("div", { className: "ust-autoSeg", role: "tablist", "aria-label": "自动刷新间隔" },
+							AUTO_OPTIONS.map((sec) => element("span", {
+								key: sec, role: "tab", "aria-selected": autoEvery === sec,
+								className: "ust-tab" + (autoEvery === sec ? " active" : ""),
+								onClick: () => setAutoEvery(sec),
+							}, sec + " 秒")),
+						) : null,
+					),
 					element("button", {
 						className: "ust-btn", disabled: loading, onClick: () => load(true),
 						title: "重新扫描本机全部会话记录",
@@ -827,10 +857,10 @@ window.__ModuleLoader__.load({
 			}, [close]);
 			return element("div", { className: "ust-overlay" + (closing ? " is-closing" : "") },
 				element("div", { className: "ust-mask", "aria-hidden": "true", onClick: close }),
-				element("div", { className: "ust-panel", role: "dialog", "aria-modal": "true", "aria-label": "使用统计" },
+				element("div", { className: "ust-panel", role: "dialog", "aria-modal": "true", "aria-label": "Token使用统计" },
 					element("div", { className: "ust-panelHead" },
 						element("div", { className: "ust-panelTitleBox" },
-							element("h2", { className: "ust-panelTitle" }, "使用统计"),
+							element("h2", { className: "ust-panelTitle" }, "Token使用统计"),
 							element("p", { className: "ust-panelSub" }, "按天 / 按小时趋势、模型用量与活跃热力图"),
 						),
 						element("button", { type: "button", className: "ust-closeBtn", "aria-label": "关闭", title: "关闭", onClick: close }, element(IconClose)),
@@ -850,12 +880,12 @@ window.__ModuleLoader__.load({
 					className: "ust-fabBtn" + (wide ? "" : " ust-fabBtn--rail"),
 					"aria-haspopup": "dialog",
 					"aria-expanded": open,
-					"aria-label": "使用统计",
-					title: "使用统计",
+					"aria-label": "Token使用统计",
+					title: "Token使用统计",
 					onClick: () => setOpen(true),
 				},
 					element("span", { className: "ust-fabIco" }, element(IconTrend)),
-					wide ? element("span", { className: "ust-fabLabel" }, "使用统计") : null,
+					wide ? element("span", { className: "ust-fabLabel" }, "Token使用统计") : null,
 				),
 				open ? element(UsageStatsModal, { onClose: () => setOpen(false) }) : null,
 			);

@@ -72,6 +72,15 @@ ok("单日窗口隐藏日均", c.includes("singleDayWindow ? null : element(Metr
 ok("圆环与列表水平并排", c.includes("flex-direction: row") && c.includes(".ust-donut-wrap > .ust-models"));
 ok("窄容器可换行回堆叠", c.includes("flex-wrap: wrap"));
 
+section("客户端：本轮改动（自动刷新/占比/宽度）");
+ok("名称为 Token使用统计", c.includes("Token使用统计") && !/["\u0027]使用统计/.test(c.replace(/Token使用统计/g, "")));
+ok("自动刷新默认开启", c.includes("react.useState(true)") && c.includes("autoRefresh"));
+ok("默认间隔 5 秒", c.includes("const [autoEvery, setAutoEvery] = react.useState(5);"));
+ok("间隔可选 5/10/30/60", c.includes("const AUTO_OPTIONS = [5, 10, 30, 60];"));
+ok("定时器随开关启停", c.includes("setInterval(() => { load(false); }") && c.includes("clearInterval(id)"));
+ok("饼图与明细各占一半", c.includes(".ust-donut-wrap > .ust-donut { flex: 1 1 0;") && c.includes(".ust-donut-wrap > .ust-models { flex: 1 1 0;"));
+ok("入口铺满侧边栏行宽", c.includes(".ust-fab{position:relative;display:flex;flex:1 1 100%"));
+
 section("客户端：数据与外壳");
 ok("数据源为 /api/usage-stats", c.includes('fetch("/api/usage-stats"'));
 ok("exports.apply 完好", c.includes("exports.apply = apply;"));
@@ -152,6 +161,11 @@ async function runBrowserE2E() {
       throw new Error("浏览器阶段未返回结果");
     }
     const r = JSON.parse(line.slice("E2E_RESULT ".length));
+    const failed = Object.entries(r).filter(([, v]) => v !== true).map(([k]) => k);
+    if (failed.length) {
+      console.log("  -- 失败项：" + failed.join("、"));
+      for (const l of out.split("\n")) if (/^(SIX|TRIO|CHANGES|DOM|BL) /.test(l)) console.log("  -- " + l.slice(0, 900));
+    }
     for (const [name, cond] of Object.entries(r)) ok(name, cond === true);
   } finally {
     try { child.kill(); } catch {}

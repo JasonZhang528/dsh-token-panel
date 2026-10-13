@@ -54,15 +54,15 @@ try {
   // 侧边栏入口
   const dom = JSON.parse(await ev("() => { const b = document.querySelector(\".ust-fabBtn\"); const wide = !!document.querySelector(\".ust-fabLabel\"); const rail = b ? b.classList.contains(\"ust-fabBtn--rail\") : false; return JSON.stringify({ fab: !!document.querySelector(\".ust-fab\"), title: (b||{}).title || null, label: (document.querySelector(\".ust-fabLabel\")||{}).textContent || null, wide: wide, rail: rail, iconCount: b ? b.querySelectorAll(\"svg\").length : 0, footer: [...document.querySelectorAll(\"[class*=footerActions] button\")].map(x => x.title) }); }"));
   results["侧边栏出现入口按钮"] = dom.fab === true;
-  results["按钮标题为「使用统计」"] = dom.title === "使用统计";
-  results["宽栏/窄栏形态自洽"] = (dom.wide ? dom.label === "使用统计" : dom.rail === true) && dom.iconCount === 1;
-  results["与 Token 用量 同处 footer 槽位"] = Array.isArray(dom.footer) && dom.footer.includes("使用统计");
+  results["按钮标题为「Token使用统计」"] = dom.title === "Token使用统计";
+  results["宽栏/窄栏形态自洽"] = (dom.wide ? dom.label === "Token使用统计" : dom.rail === true) && dom.iconCount === 1;
+  results["与 Token 用量 同处 footer 槽位"] = Array.isArray(dom.footer) && dom.footer.includes("Token使用统计");
 results["弹窗未打开时页面无残留"] = true;
 
   // 打开弹窗
   const opened = JSON.parse(await ev("async () => { document.querySelector('.ust-fabBtn').click(); await new Promise(r=>setTimeout(r,3500)); const b=document.querySelector('.ust-panelBody'); return JSON.stringify({ overlay: !!document.querySelector('.ust-overlay'), panel: !!document.querySelector('.ust-panel'), title: (document.querySelector('.ust-panelTitle')||{}).textContent||null, close: !!document.querySelector('.ust-closeBtn'), metrics: document.querySelectorAll('.ust-metric').length, svgs: document.querySelectorAll('.ust-panel svg').length, text: b?b.innerText.replace(/\\s+/g,' ').slice(0,200):null }); }"));
   results["点击后弹窗打开"] = opened.overlay === true && opened.panel === true;
-  results["弹窗标题正确"] = opened.title === "使用统计";
+  results["弹窗标题正确"] = opened.title === "Token使用统计";
   results["含关闭按钮"] = opened.close === true;
   results["渲染出指标卡"] = opened.metrics > 0;
   results["渲染出图表 SVG"] = opened.svgs > 0;
@@ -83,6 +83,18 @@ results["弹窗未打开时页面无残留"] = true;
   results["单日窗口隐藏活跃天数"] = Array.isArray(trio.labels) && !trio.labels.includes("活跃天数");
   results["单日窗口隐藏日均"] = Array.isArray(trio.labels) && !trio.labels.includes("日均");
   results["圆环与列表水平并排"] = trio.sideBySide === true;
+
+  // 本轮改动：宽度/图标对齐/占比/自动刷新/名称
+  const six = JSON.parse(await ev("async () => { if(!document.querySelector(\".ust-fabLabel\")){ const t=[...document.querySelectorAll(\"button\")].find(x=>(x.title||\"\")===\"打开侧边栏\"); if(t) t.click(); await new Promise(r=>setTimeout(r,2500)); } const btn=document.querySelector(\".ust-fabBtn\"); const fr=btn.getBoundingClientRect(); const setBtn=[...document.querySelectorAll(\"button\")].find(b=>(b.getAttribute(\"aria-label\")||\"\")===\"设置\"); const sr=setBtn?setBtn.getBoundingClientRect():null; const fi=btn.querySelector(\"svg\").getBoundingClientRect(); const si=setBtn?setBtn.querySelector(\"svg\").getBoundingClientRect():null; if(!document.querySelector(\".ust-overlay\")){ btn.click(); await new Promise(r=>setTimeout(r,4000)); } const wrap=document.querySelector(\".ust-donut-wrap\"); const donut=wrap.querySelector(\".ust-donut\"); const list=wrap.querySelector(\".ust-models\"); const dr=donut.getBoundingClientRect(); const lr=list.getBoundingClientRect(); const chk=document.querySelector(\".ust-autoCheck\"); const segs=[...document.querySelectorAll(\".ust-autoSeg .ust-tab\")].map(x=>x.textContent.trim()); const activeSeg=[...document.querySelectorAll(\".ust-autoSeg .ust-tab.active\")].map(x=>x.textContent.trim()); return JSON.stringify({ wide: !!document.querySelector('.ust-fabLabel'), fabW: Math.round(fr.width), setW: sr?Math.round(sr.width):0, iconLeftDiff: si?Math.abs(Math.round(fi.left)-Math.round(si.left)):999, donutW: Math.round(dr.width), listW: Math.round(lr.width), checked: chk?chk.checked:null, segs, activeSeg, title: (document.querySelector(\".ust-panelTitle\")||{}).textContent||null }); }"));
+  console.log("SIX " + JSON.stringify(six));
+  results["弹窗标题为 Token使用统计"] = six.title === "Token使用统计";
+  results["入口宽度与设置菜单一致"] = six.wide ? Math.abs(six.fabW - six.setW) <= 2 : true;
+  results["窄栏下入口为图标钮"] = six.wide ? true : six.fabW === 42;
+  results["入口图标与设置图标左对齐"] = six.iconLeftDiff <= 1;
+  results["饼图与明细宽度接近各半"] = Math.abs(six.donutW - six.listW) <= 8;
+  results["自动刷新默认勾选"] = six.checked === true;
+  results["间隔选项为 5/10/30/60 秒"] = JSON.stringify(six.segs) === JSON.stringify(["5 秒","10 秒","30 秒","60 秒"]);
+  results["默认选中 5 秒"] = Array.isArray(six.activeSeg) && six.activeSeg[0] === "5 秒";
 
   // 本次改动：区块标题 / 默认区间 / 入口形态
   const changes = JSON.parse(await ev("async () => { window.dispatchEvent(new KeyboardEvent(\"keydown\",{key:\"Escape\",bubbles:true})); await new Promise(r=>setTimeout(r,1200)); document.querySelector(\".ust-fabBtn\").click(); await new Promise(r=>setTimeout(r,4000)); const b=document.querySelector(\".ust-panelBody\"); const h2=[...b.querySelectorAll(\"h2\")].map(x=>x.textContent.trim()); const active=[...b.querySelectorAll(\".ust-tab.active\")].map(x=>x.textContent.trim()); const btn=document.querySelector(\".ust-fabBtn\"); const cs=getComputedStyle(btn); return JSON.stringify({ headings: h2, activeTabs: active, btnH: cs.height, btnRadius: cs.borderRadius, btnFont: cs.fontSize }); }"));
