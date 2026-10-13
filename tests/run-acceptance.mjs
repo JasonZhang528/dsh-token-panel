@@ -72,13 +72,22 @@ ok("单日窗口隐藏日均", c.includes("singleDayWindow ? null : element(Metr
 ok("圆环与列表水平并排", c.includes("flex-direction: row") && c.includes(".ust-donut-wrap > .ust-models"));
 ok("窄容器可换行回堆叠", c.includes("flex-wrap: wrap"));
 
+section("客户端：本轮改动（GitHub 热力图/会话与供应商/冻结/名称）");
+ok("热力图为 GitHub 网格风格", c.includes("ust-gh-cell") && c.includes("ust-gh-lv4"));
+ok("热力图五档色阶", /ust-gh-lv[0-4]/.test(c));
+ok("标题与副标题同行", c.includes(".ust-panelTitleBox{flex:1 1 auto;min-width:0;display:flex;flex-direction:row;align-items:baseline"));
+ok("日期栏滚动冻结", c.includes(".ust-header") && /position:\s*sticky/.test(c));
+ok("会话统计表", c.includes("function SessionsView(") && c.includes("session.days") === false);
+ok("供应商统计表", c.includes("function ProvidersView("));
+ok("名称为 Token用量统计", !c.includes("Token使用统计") && c.includes("Token用量统计"));
+
 section("客户端：本轮改动（自动刷新/占比/宽度）");
-ok("名称为 Token使用统计", c.includes("Token使用统计") && !/["\u0027]使用统计/.test(c.replace(/Token使用统计/g, "")));
+ok("名称为 Token用量统计", c.includes("Token用量统计") && !/["\u0027]使用统计/.test(c.replace(/Token用量统计/g, "")));
 ok("自动刷新默认开启", c.includes("react.useState(true)") && c.includes("autoRefresh"));
 ok("默认间隔 5 秒", c.includes("const [autoEvery, setAutoEvery] = react.useState(5);"));
 ok("间隔可选 5/10/30/60", c.includes("const AUTO_OPTIONS = [5, 10, 30, 60];"));
 ok("定时器随开关启停", c.includes("setInterval(() => { load(false); }") && c.includes("clearInterval(id)"));
-ok("饼图与明细各占一半", c.includes(".ust-donut-wrap > .ust-donut { flex: 1 1 0;") && c.includes(".ust-donut-wrap > .ust-models { flex: 1 1 0;"));
+ok("饼图占 40% / 明细占 60%", c.includes(".ust-donut-wrap > .ust-donut { flex: 0 0 40%;") && c.includes(".ust-donut-wrap > .ust-models { flex: 1 1 0;"));
 ok("入口铺满侧边栏行宽", c.includes(".ust-fab{position:relative;display:flex;flex:1 1 100%"));
 
 section("客户端：数据与外壳");
@@ -89,6 +98,15 @@ ok("ModuleLoader 外壳完好", c.trimEnd().endsWith("});"));
 
 section("宿主侧");
 const h = readFileSync(HOST, "utf8");
+section("宿主侧：供应商与会话维度聚合");
+ok("providerTotals 累计", h.includes("const providerTotals = new Map()"));
+ok("sessionList 累计", h.includes("const sessionList = []"));
+ok("account 记录供应商", h.includes("const account = (dayKey, hour, model, usage, provider)"));
+ok("request/context 取 provider", h.includes('case "request/context":') && h.includes("currentProvider"));
+ok("buildCache 输出 providers", h.includes("const providers = [...(s.providerTotals || new Map())"));
+ok("buildCache 输出 sessions", h.includes("const sessions = [...(s.sessionList || [])"));
+
+
 ok("注册 /api/usage-stats 路由", h.includes('path: "/api/usage-stats"'));
 ok("自行通过信任栅栏", h.includes("requestRejection"));
 ok("inject 含 webServer", h.includes('"webServer"'));

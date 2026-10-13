@@ -1,4 +1,4 @@
-// dsh-token-panel —— Token使用统计(客户端)
+// dsh-token-panel —— Token用量统计(客户端)
 // 排版：固定 px 字阶、WCAG 对比度达标、4 的倍数间距阶梯
 // 图表：日历点阵 / 发丝折线 / 刻度环，配色与排版自研
 // 关键：按实测容器宽度 1:1 出图，不做 viewBox 缩放（缩放会让小字号变成看不见）
@@ -174,9 +174,9 @@ window.__ModuleLoader__.load({
 
 /* 面板头部 / 主体 */
 .ust-panelHead{flex:none;display:flex;align-items:center;gap:14px;padding:18px 24px 14px;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}
-.ust-panelTitleBox{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px}
+.ust-panelTitleBox{flex:1 1 auto;min-width:0;display:flex;flex-direction:row;align-items:baseline;gap:10px}
 .ust-panelTitle{margin:0;color:var(--dsw-alias-label-primary,#191918);font-size:16px;font-weight:600;line-height:22px}
-.ust-panelSub{margin:0;color:var(--dsw-alias-label-tertiary,#86857F);font-size:12px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ust-panelSub{margin:0;color:var(--dsw-alias-label-tertiary,#86857F);font-size:12px;line-height:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ust-closeBtn{flex:none;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;color:var(--dsw-alias-label-tertiary,#86857F);background:transparent;border:0;border-radius:8px;cursor:pointer;transition:color .15s ease,background-color .15s ease}
 .ust-closeBtn:hover{color:var(--dsw-alias-label-primary,#191918);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}
 .ust-closeBtn svg{width:16px;height:16px}
@@ -259,164 +259,190 @@ window.__ModuleLoader__.load({
 		// 自动刷新可选的间隔（秒）
 		const AUTO_OPTIONS = [5, 10, 30, 60];
 
+		// ---------- 活跃热力图（GitHub 贡献网格风格：周列 × 星期行，方块按用量着色） ----------
 		function Heatmap({ days, window: wnd }) {
-			const [boxRef, boxW] = useMeasure();
-			const [placeTip, clearTip, tipEl] = useTip();
-			const scrollRef = react.useRef(null);
-
-			// 视窗：数据首日到今天，最少 30 天，最多 365 天
 			const model = react.useMemo(() => {
 				const map = new Map();
 				(days || []).forEach((d) => map.set(d.date, d));
 				const today = new Date();
 				today.setHours(0, 0, 0, 0);
-				let start = new Date(today);
-				start.setDate(start.getDate() - 29);
-				const keys = ((wnd && wnd.dateKeys) || []).filter(Boolean).sort();
-				if (keys.length) {
-					const first = new Date(keys[0] + "T00:00:00");
-					if (!Number.isNaN(first.getTime()) && first < start) start = first;
-				}
-				const floorDate = new Date(today);
-				floorDate.setDate(floorDate.getDate() - 364);
-				if (start < floorDate) start = floorDate;
-				// 首列对齐周日
-				const gridStart = new Date(start);
-				gridStart.setDate(gridStart.getDate() - gridStart.getDay());
-
+				// GitHub 风格：固定展示最近一年（53 周），结束于本周
+				const end0 = new Date(today);
+				end0.setDate(end0.getDate() + (6 - end0.getDay()));
+				const start0 = new Date(end0);
+				start0.setDate(start0.getDate() - (53 * 7 - 1));
 				const cells = [];
-				let maxDay = 0, peak = null;
-				for (let cur = new Date(gridStart); cur <= today; cur.setDate(cur.getDate() + 1)) {
+				let maxDay = 0, peak = null, activeDays = 0;
+				const cumMap = new Map();
+				let cum = 0;
+				(days || []).forEach((d) => { cum += totalOf(d); cumMap.set(d.date, cum); });
+				for (let cur = new Date(start0); cur <= end0; cur.setDate(cur.getDate() + 1)) {
 					const key = dateKey(cur);
 					const day = map.get(key);
 					const total = totalOf(day);
-					const col = Math.round((cur - gridStart) / 86400000 / 7);
-					const cell = { key, col, row: cur.getDay(), total, turns: turnsOf(day), month: cur.getMonth() + 1, dom: cur.getDate(), idx: cells.length };
-					cells.push(cell);
-					if (total > maxDay) { maxDay = total; peak = cell; }
+					const col = Math.floor((cur - start0) / 86400000 / 7);
+					cells.push({
+						key, col, row: cur.getDay(), total, turns: turnsOf(day), cum: cumMap.get(key),
+						month: cur.getMonth() + 1, dom: cur.getDate(), isToday: key === dateKey(today),
+					});
+					if (total > 0) activeDays += 1;
+					if (total > maxDay) { maxDay = total; peak = cells[cells.length - 1]; }
 				}
-				const cols = Math.max(1, ...cells.map((c) => c.col + 1));
-				return { cells, cols, maxDay, peak, today };
-			}, [days, wnd]);
+				return { cells, maxDay, peak, activeDays, start: start0, end: end0 };
+			}, [days]);
 
-			const maxVal = model.maxDay;
+			// GitHub 五档底色：按用量占比分档（无数据用 quiet）
+			const level = (v) => {
+				if (!(v > 0) || !(model.maxDay > 0)) return 0;
+				const r = v / model.maxDay;
+				return r > 0.66 ? 4 : r > 0.33 ? 3 : r > 0.12 ? 2 : 1;
+			};
 
-			// 窗口 ≤ 70 天：单行点阵（窄面板里最省空间、点最大）；
-			// 更长：7 行日历（列 = 周，行 = 星期），列多时横向滚动。
-			const singleRow = model.cells.length <= 70;
-			const rows = singleRow ? 1 : 7;
-			const nCols = singleRow ? model.cells.length : model.cols;
-			const PAD_L = rows === 1 ? 6 : 26, PAD_T = 26, PAD_B = 30;
-			const avail = Math.max(180, boxW - PAD_L - 6);
-			const cap = rows === 1 ? 26 : 17;
-			const floor = rows === 1 ? 9 : 11; // 单行档可压到 9px，优先一屏放下
-			const pitch = Math.max(floor, Math.min(cap, avail / Math.max(1, nCols)));
-			const gridW = nCols * pitch;
-			const W = Math.max(boxW, PAD_L + gridW + 6);
-			const H = PAD_T + rows * pitch + PAD_B;
-			const scrolls = W > boxW + 2;
-			// 单行档：点按序号排；7 行档：点按周列 × 星期行
-			const colOf = (c) => (singleRow ? c.idx : c.col);
-			const rowOf = (c) => (singleRow ? 0 : c.row);
+			const CELL = 13, GAP = 3, PAD_L = 28, PAD_T = 20, PAD_B = 8;
+			const cols = 53, rows = 7;
+			const W = PAD_L + cols * (CELL + GAP) - GAP + 2;
+			const H = PAD_T + rows * (CELL + GAP) - GAP + PAD_B;
+			const cx = (col) => PAD_L + col * (CELL + GAP);
+			const cy = (row) => PAD_T + row * (CELL + GAP);
 
-			react.useEffect(() => {
-				const el = scrollRef.current;
-				if (el && scrolls) requestAnimationFrame(() => { el.scrollLeft = el.scrollWidth; });
-			}, [scrolls, model]);
+			// 月份标尺（出现新的月份时标注）
+			const monthMarks = [];
+			let lastMonth = -1;
+			for (let c0 = 0; c0 < cols; c0++) {
+				const cell = model.cells.find((x) => x.col === c0);
+				if (!cell) continue;
+				if (cell.month !== lastMonth) { monthMarks.push({ col: c0, month: cell.month }); lastMonth = cell.month; }
+			}
 
-			// 交互命中格：每格一个透明矩形铺满 pitch×pitch。
-			// 圆点半径受 pitch 限制做不到 ≥7px 又不互相重叠，矩形可无缝铺满 = 无死角、零重叠
-			const hitCell = (col, row, key, title, body) => element("rect", {
-				key, className: "ust-hitcell",
-				x: PAD_L + col * pitch, y: PAD_T + row * pitch, width: pitch, height: pitch,
-				onMouseEnter: (e) => placeTip(e, element("div", null,
-					element("div", { className: "ust-tip-title" }, title),
-					element("div", { className: "ust-tip-body" }, body),
-				)),
-				onMouseLeave: clearTip,
-			});
-			// 半径上限 = 间距的 42%：相邻点直径不超过间距，永不重叠
-			const rMax = pitch * 0.42;
-			const rOf = (v, max) => (v > 0 && max > 0 ? Math.max(Math.min(2.4, rMax), Math.sqrt(v / max) * rMax) : 0);
-			const cx = (col) => PAD_L + col * pitch + pitch / 2;
-			const cy = (row) => PAD_T + row * pitch + pitch / 2;
-
-			const marks = [];
-			model.cells.forEach((c, i) => {
-				const x = cx(colOf(c)), y = cy(rowOf(c));
-				const v = c.total;
-				if (v > 0) {
-					marks.push(element("circle", { key: "d" + i, className: qF(qLevel(v, maxVal)), cx: x, cy: y, r: rOf(v, maxVal) }));
-				} else {
-					marks.push(element("circle", { key: "q" + i, className: "ust-dot-quiet", cx: x, cy: y, r: 1.4 }));
-				}
-				// 视觉点不绑事件，交互统一交给命中格
-				const body = v > 0 ? fmtFull(c.total) + " tokens · " + c.turns + " 轮" : "当日无用量";
-				marks.push(hitCell(colOf(c), rowOf(c), "h" + i, fmtDayLabel(c.key), body));
-			});
-
-			// 星期轴（周日在上）
-			const wdAxis = singleRow ? null : WD.map((lab, k) =>
-				k % 2 === 0 ? element("text", { key: "wd" + k, className: "ust-axis", x: PAD_L - 8, y: cy(k) + 4, textAnchor: "end" }, lab) : null);
-
-			// 月份标（该列含 1 号）
-			const marks2 = model.cells
-				.filter((c) => (singleRow ? (c.dom === 1 || c.idx % 5 === 0) : c.dom === 1))
-				.map((c, i) => {
-					const x = cx(singleRow ? c.idx : c.col);
-					return element("g", { key: "m" + i },
-						element("text", { className: "ust-axis", x: x, y: PAD_T - 9, textAnchor: "middle" }, singleRow ? (c.dom === 1 ? c.month + "月" : c.dom + "日") : c.month + "月"),
-						element("line", { className: "ust-floor-tick", x1: x, y1: PAD_T - 5, x2: x, y2: PAD_T - 2 }),
-					);
-				});
-
-			// 峰值标注（仅每日档，且不与月份标冲突）
-			// 峰值标注：默认放点的下方（上方是日期轴）；贴底时改放上方
-			const peakMark = (model.peak && model.peak.total > 0)
-				? (() => {
-					const x = cx(colOf(model.peak)), y = cy(rowOf(model.peak)), r = rOf(model.peak.total, maxVal);
-					const below = y + r + 16 <= H - 4;
-					const ty = below ? y + r + 13 : y - r - 8;
-					return element("g", null,
-						element("circle", { className: "ust-peak-ring", cx: x, cy: y, r: r + 4 }),
-						element("text", {
-							className: "ust-callout", x: x, y: ty,
-							textAnchor: x > W - 60 ? "end" : x < 60 ? "start" : "middle",
-						}, "峰值 " + fmtLarge(model.peak.total)),
-					);
-				})()
-				: null;
-
-			const caption = "一点 = 一天，点面积 = 当日 Token，小点 = 当日无用量";
+			const wdKey = "ust-gh-axis"
+			const wdAxis = [1, 3, 5].map((k) =>
+				element("text", { key: "wd" + k, className: wdKey, x: 0, y: cy(k) + CELL - 2.5, textAnchor: "start" }, WD[k]));
 
 			return element("div", { className: "ust-block" },
 				element("div", { className: "ust-block-head" },
 					element("div", null,
 						element("h2", { className: "ust-h2" }, "活跃热力图"),
-						element("div", { className: "ust-sub" }, caption),
-						element("div", { className: "ust-scale" },
+						element("div", { className: "ust-sub" }, "一块 = 一天，颜色越深 = 当日 Token 越多；最近一年"),
+						element("div", { className: "ust-gh-scale" },
 							element("span", { className: "ust-scale-lab" }, "少"),
-							element("span", { className: "ust-scale-sw ust-qb1" }),
-							element("span", { className: "ust-scale-sw ust-qb2" }),
-							element("span", { className: "ust-scale-sw ust-qb3" }),
+							[0, 1, 2, 3, 4].map((lv) => element("span", { key: lv, className: "ust-gh-sw ust-gh-lv" + lv })),
 							element("span", { className: "ust-scale-lab" }, "多"),
 						),
 					),
 				),
-				element("div", { ref: boxRef },
-					element("div", { className: "ust-plot" + (scrolls ? " is-scroll" : ""), ref: scrollRef },
-						boxW > 0 ? element("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "活跃热力图" },
-							wdAxis, marks2, marks, peakMark,
-						) : null,
+				element("div", { className: "ust-gh-wrap" },
+					element("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "活跃热力图" },
+						wdAxis,
+						monthMarks.map((m0) => element("g", { key: "m" + m0.col },
+							element("text", { className: wdKey, x: cx(m0.col), y: PAD_T - 8, textAnchor: "start" }, m0.month + "月"),
+						)),
+						model.cells.map((c0) => element("rect", {
+							key: c0.key,
+							className: "ust-gh-cell ust-gh-lv" + level(c0.total) + (c0.isToday ? " is-today" : ""),
+							x: cx(c0.col), y: cy(c0.row), width: CELL, height: CELL, rx: 2.5,
+							children: element("title", null, fmtDayLabel(c0.key) + (c0.total > 0 ? " · " + fmtFull(c0.total) + " tokens" : " · 无用量")),
+						})),
 					),
 				),
-				scrolls ? element("div", { className: "ust-src", style: { marginTop: 8 } }, "← 左右滑动查看完整时间轴") : null,
-				tipEl,
+				element("div", { className: "ust-gh-legend" },
+					element("span", { className: "ust-gh-note" }, "共 " + model.cells.length + " 天 · 有用量 " + model.activeDays + " 天 · 峰值 " + (model.peak && model.peak.total > 0 ? fmtLarge(model.peak.total) : "—")),
+				),
 			);
 		}
-
-		// ---------- 2) 用量趋势 ----------
-		// 一条线 = 一个模型，圆点 = 当天用量，峰值直接标数
+		// ---------- 会话统计 / 会话模型明细 ----------
+		function SessionsView({ sessions }) {
+			const rows = sessions || [];
+			if (!rows.length) return null;
+			const grand = rows.reduce((sum, r) => sum + r.total, 0) || 0;
+			// 相对时间：今天显示时刻，更早显示日期
+			// 相对时间：今天显示时刻，更早显示日期（复用 fmtClock / dateKey）
+			const fmtWhen = (t) => {
+				if (!t) return "—";
+				const d = new Date(t);
+				const clock = fmtClock(t);
+				const ymd = dateKey(d);
+				const isToday = ymd === dateKey(new Date());
+				return isToday && clock ? clock : ymd;
+			};
+			return element("div", { className: "ust-block" },
+				element("div", { className: "ust-block-head" },
+					element("div", null,
+						element("h2", { className: "ust-h2" }, "会话统计"),
+						element("div", { className: "ust-sub" }, "全部历史会话的 Token 用量与会话内模型明细"),
+					),
+					element("div", { className: "ust-sub" }, rows.length + " 个会话"),
+				),
+				element("div", { className: "ust-tblWrap" },
+					element("table", { className: "ust-tbl" },
+						element("thead", null, element("tr", null,
+							element("th", null, "会话"),
+							element("th", { className: "ust-tblNum" }, "轮次"),
+							element("th", { className: "ust-tblNum" }, "消息"),
+							element("th", { className: "ust-tblNum" }, "Token"),
+							element("th", { className: "ust-tblNum" }, "占比"),
+							element("th", null, "模型明细"),
+							element("th", null, "最近活动"),
+						)),
+					element("tbody", null,
+						rows.map((r) => element("tr", { key: r.id },
+							element("td", null, element("div", { className: "ust-tblName" },
+								element("span", { className: "ust-ellip", title: r.title || r.id }, r.title || r.id))),
+							element("td", { className: "ust-tblNum" }, String(r.turns || 0)),
+							element("td", { className: "ust-tblNum" }, String(r.messages || 0)),
+							element("td", { className: "ust-tblNum" }, fmtLarge(r.total)),
+							element("td", { className: "ust-tblNum" }, (grand > 0 ? Math.round((r.total / grand) * 100) : 0) + "%"),
+							element("td", null, (r.byModel || []).slice(0, 4).map((m, i) =>
+								element("span", { key: i, className: "ust-dot", title: m.model + "：" + fmtLarge(m.total), style: { background: m.color || "var(--ink)" } }))),
+							element("td", { className: "ust-tblSub" }, fmtWhen(r.lastTime || r.createdAt)),
+						)),
+					),
+				),
+			),
+		);
+		}
+		// ---------- 供应商用量统计 ----------
+		// ---------- 供应商用量统计 ----------
+		function ProvidersView({ providers }) {
+			const rows = providers || [];
+			if (!rows.length) return null;
+			const grand = rows.reduce((sum, r) => sum + r.total, 0) || 0;
+			return element("div", { className: "ust-block" },
+				element("div", { className: "ust-block-head" },
+					element("div", null,
+						element("h2", { className: "ust-h2" }, "供应商用量统计"),
+						element("div", { className: "ust-sub" }, "按 API 提供商汇总，含各家模型明细"),
+					),
+					element("div", { className: "ust-sub" }, rows.length + " 个供应商"),
+				),
+				element("div", { className: "ust-tblWrap" },
+					element("table", { className: "ust-tbl" },
+						element("thead", null, element("tr", null,
+							element("th", null, "供应商"),
+							element("th", { className: "ust-tblNum" }, "输入"),
+							element("th", { className: "ust-tblNum" }, "输出"),
+							element("th", { className: "ust-tblNum" }, "缓存命中"),
+							element("th", { className: "ust-tblNum" }, "总量"),
+							element("th", { className: "ust-tblNum" }, "占比"),
+							element("th", null, "模型明细"),
+						)),
+					element("tbody", null,
+						rows.map((r) => element("tr", { key: r.provider },
+							element("td", null, element("div", { className: "ust-tblName" },
+								element("span", { className: "ust-dot", style: { background: r.color || "var(--ink)" } }),
+								element("span", { className: "ust-ellip", title: r.provider }, r.provider))),
+							element("td", { className: "ust-tblNum" }, fmtLarge(r.input)),
+							element("td", { className: "ust-tblNum" }, fmtLarge(r.output)),
+							element("td", { className: "ust-tblNum" }, fmtLarge(r.cacheRead)),
+							element("td", { className: "ust-tblNum" }, fmtLarge(r.total)),
+							element("td", { className: "ust-tblNum" }, (grand > 0 ? Math.round((r.total / grand) * 100) : 0) + "%"),
+							element("td", null, (r.byModel || []).slice(0, 4).map((m, i) =>
+								element("span", { key: i, className: "ust-dot", title: m.model + "：" + fmtLarge(m.total), style: { background: m.color || "var(--ink)" } }))),
+						)),
+					),
+				),
+			),
+		);
+		}
 		function Trend({ days, window: wnd }) {
 			const [boxRef, boxW] = useMeasure();
 			const [hidden, setHidden] = react.useState({});
@@ -763,8 +789,9 @@ window.__ModuleLoader__.load({
 
 			return element("div", { className: "ust-root" },
 				element(SummaryMetrics, { summary: data.summary }),
+				hasData ? element(Heatmap, { days, window: wnd }) : null,
 				element("div", { className: "ust-header" },
-					element("h1", { className: "ust-page-title" }, "Token使用统计"),
+					element("h1", { className: "ust-page-title" }, "Token用量统计"),
 					element("div", { className: "ust-rangebox" },
 						element("div", { className: "ust-tabs", role: "tablist" },
 							RANGES.map((r) => element("span", {
@@ -806,9 +833,10 @@ window.__ModuleLoader__.load({
 				),
 				wnd.dateKeys.length === 0 ? element("div", { className: "ust-warn" }, "当前时间范围没有数据") : null,
 				data.warnings && data.warnings.length > 0 ? element("div", { className: "ust-warn" }, data.warnings.join("；")) : null,
-				hasData ? element(Heatmap, { days, window: wnd }) : null,
 				hasData && wnd.dateKeys.length > 0 ? element(Trend, { days, window: wnd }) : null,
 				hasData && wnd.dateKeys.length > 0 ? element(Donut, { days, window: wnd }) : null,
+			element(SessionsView, { sessions: data.sessions }),
+			element(ProvidersView, { providers: data.providers }),
 				element("div", { className: "ust-footer" },
 					element("div", { className: "ust-meta" },
 						loading ? "正在重新扫描全部会话…" : (data.generatedAt ? "数据更新于 " + fmtClock(data.generatedAt) : ""),
@@ -857,10 +885,10 @@ window.__ModuleLoader__.load({
 			}, [close]);
 			return element("div", { className: "ust-overlay" + (closing ? " is-closing" : "") },
 				element("div", { className: "ust-mask", "aria-hidden": "true", onClick: close }),
-				element("div", { className: "ust-panel", role: "dialog", "aria-modal": "true", "aria-label": "Token使用统计" },
+				element("div", { className: "ust-panel", role: "dialog", "aria-modal": "true", "aria-label": "Token用量统计" },
 					element("div", { className: "ust-panelHead" },
 						element("div", { className: "ust-panelTitleBox" },
-							element("h2", { className: "ust-panelTitle" }, "Token使用统计"),
+							element("h2", { className: "ust-panelTitle" }, "Token用量统计"),
 							element("p", { className: "ust-panelSub" }, "按天 / 按小时趋势、模型用量与活跃热力图"),
 						),
 						element("button", { type: "button", className: "ust-closeBtn", "aria-label": "关闭", title: "关闭", onClick: close }, element(IconClose)),
@@ -880,12 +908,12 @@ window.__ModuleLoader__.load({
 					className: "ust-fabBtn" + (wide ? "" : " ust-fabBtn--rail"),
 					"aria-haspopup": "dialog",
 					"aria-expanded": open,
-					"aria-label": "Token使用统计",
-					title: "Token使用统计",
+					"aria-label": "Token用量统计",
+					title: "Token用量统计",
 					onClick: () => setOpen(true),
 				},
 					element("span", { className: "ust-fabIco" }, element(IconTrend)),
-					wide ? element("span", { className: "ust-fabLabel" }, "Token使用统计") : null,
+					wide ? element("span", { className: "ust-fabLabel" }, "Token用量统计") : null,
 				),
 				open ? element(UsageStatsModal, { onClose: () => setOpen(false) }) : null,
 			);

@@ -60,7 +60,21 @@ body[data-ds-dark-theme] .ust-root {
 .ust-src { margin: 12px 0 0; font-size: 10px; font-weight: 600; line-height: 1.4; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
 
 /* ── 顶部：标题 + 时间范围 ───────────────────────────────── */
-.ust-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 12px 16px; }
+.ust-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin: 0 -4px 20px;
+  padding: 10px 4px;
+  background: var(--surface, #F7F6F3);
+  border-bottom: 1px solid var(--rule, #C4C3BC);
+}
+body[data-ds-dark-theme] .ust-header { background: #24231F; border-bottom-color: #3B3A35; }
 .ust-rangebox { position: relative; }
 .ust-tabs { display: flex; flex-wrap: wrap; gap: 2px 4px; }
 .ust-tab {
@@ -173,7 +187,7 @@ body[data-ds-dark-theme] .ust-tab.active { background: var(--ink); color: #19191
 /* ── 环形图 ─────────────────────────────────────────────── */
 /* 圆环与模型明细各占一半；容器过窄时自动换行回上下堆叠 */
 .ust-donut-wrap { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 24px 32px; }
-.ust-donut-wrap > .ust-donut { flex: 1 1 0; margin: 0 auto; }
+.ust-donut-wrap > .ust-donut { flex: 0 0 40%; margin: 0 auto; }
 .ust-donut-wrap > .ust-models { flex: 1 1 0; min-width: 0; }
 .ust-donut { position: relative; width: 168px; height: 168px; margin: 4px auto 0; flex: none; }
 .ust-donut svg { display: block; width: 100%; height: 100%; overflow: visible; }
@@ -281,3 +295,39 @@ body[data-ds-dark-theme] .ust-date::-webkit-calendar-picker-indicator { filter: 
 	.ust-fade, .ust-draw, .ust-pop, .ust-skeleton { animation: none; }
 	.ust-draw { stroke-dasharray: none; stroke-dashoffset: 0; }
 }
+
+/* ── 活跃热力图（GitHub 贡献网格风格） ── */
+.ust-gh-wrap { overflow-x: auto; overflow-y: hidden; padding: 4px 0 2px; }
+.ust-gh-wrap svg { display: block; }
+.ust-gh-cell { stroke: rgba(0,0,0,.05); stroke-width: 1; }
+body[data-ds-dark-theme] .ust-gh-cell { stroke: rgba(255,255,255,.06); }
+.ust-gh-cell.is-today { stroke: var(--ink); stroke-width: 1.5; }
+/* 五档底色：0 = 无数据 */
+.ust-gh-lv0 { fill: var(--quiet, #C4C3BC); }
+.ust-gh-lv1 { fill: var(--q1, #9CBEE6); }
+.ust-gh-lv2 { fill: var(--q2, #5B8FD4); }
+.ust-gh-lv3 { fill: var(--q3, #2C6BC4); }
+.ust-gh-lv4 { fill: var(--q4, #123C74); }
+body[data-ds-dark-theme] .ust-gh-lv0 { fill: #35342F; }
+body[data-ds-dark-theme] .ust-gh-lv1 { fill: #2A4C7A; }
+body[data-ds-dark-theme] .ust-gh-lv2 { fill: #3F6EA8; }
+body[data-ds-dark-theme] .ust-gh-lv3 { fill: #5F97D4; }
+body[data-ds-dark-theme] .ust-gh-lv4 { fill: #9CC4EE; }
+.ust-gh-axis { fill: var(--faint, #86857F); font-size: 10px; font-family: inherit; }
+.ust-gh-scale { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
+.ust-gh-sw { width: 11px; height: 11px; border-radius: 2.5px; display: inline-block; }
+.ust-gh-legend { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+.ust-gh-note { font-size: 12px; color: var(--muted, #5F5E59); font-variant-numeric: tabular-nums; }
+
+/* ── 会话统计 / 供应商统计（新表格） ── */
+.ust-tblWrap { overflow-x: auto; }
+.ust-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ust-tbl th, .ust-tbl td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--rule, #C4C3BC); white-space: nowrap; }
+body[data-ds-dark-theme] .ust-tbl th, body[data-ds-dark-theme] .ust-tbl td { border-bottom-color: #3B3A35; }
+.ust-tbl th { color: var(--muted, #5F5E59); font-weight: 600; font-size: 12px; }
+.ust-tbl tbody tr:hover { background: var(--hover, #EDECE7); }
+.ust-tblNum { text-align: right; font-variant-numeric: tabular-nums; }
+.ust-tblName { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ust-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.ust-tblSub { color: var(--muted, #5F5E59); font-size: 12px; font-weight: 400; }
+.ust-ellip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
