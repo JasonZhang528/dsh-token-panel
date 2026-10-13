@@ -239,10 +239,11 @@ window.__ModuleLoader__.load({
 		function useTip() {
 			const [tip, setTip] = react.useState(null);
 			const place = (e, node) => {
-				const W = 260, H = 150;
-				let x = e.clientX + 14, y = e.clientY + 14;
-				if (x + W > window.innerWidth) x = e.clientX - W - 14;
-				if (y + H > window.innerHeight) y = e.clientY - H - 14;
+				const W = 240, H = 140;
+				// 贴近鼠标：偏移 10px，右侧/下方放不下时翻到另一侧
+				let x = e.clientX + 10, y = e.clientY + 10;
+				if (x + W > window.innerWidth) x = e.clientX - W - 10;
+				if (y + H > window.innerHeight) y = e.clientY - H - 10;
 				if (x < 8) x = 8;
 				if (y < 8) y = 8;
 				setTip({ node, x, y });
@@ -336,7 +337,7 @@ window.__ModuleLoader__.load({
 				element("div", { className: "ust-block-head" },
 					element("div", { className: "ust-block-titleRow" },
 						element("h2", { className: "ust-h2" }, "活跃热力图"),
-						element("div", { className: "ust-sub" }, "一块 = 一天，颜色越深 = 当日 Token 越多；最近一年"),
+						element("div", { className: "ust-sub" }, "一块 = 一天，颜色越深 = 当日 Token 越多 · 共 " + model.cells.length + " 天 · 有用量 " + model.activeDays + " 天 · 峰值 " + (model.peak && model.peak.total > 0 ? fmtLarge(model.peak.total) : "—")),
 						element("div", { className: "ust-gh-scale" },
 							element("span", { className: "ust-scale-lab" }, "少"),
 							[0, 1, 2, 3, 4].map((lv) => element("span", { key: lv, className: "ust-gh-sw ust-gh-lv" + lv })),
@@ -345,7 +346,7 @@ window.__ModuleLoader__.load({
 					),
 				),
 				element("div", { className: "ust-gh-wrap" },
-					element("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "活跃热力图" },
+					element("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "活跃热力图", style: { margin: "0 auto" } },
 						wdAxis,
 						monthMarks.map((m0) => element("g", { key: "m" + m0.col },
 							element("text", { className: wdKey, x: cx(m0.col), y: PAD_T - 8, textAnchor: "start" }, m0.month + "月"),
@@ -358,17 +359,43 @@ window.__ModuleLoader__.load({
 						})),
 					),
 				),
-				element("div", { className: "ust-gh-legend" },
-					element("span", { className: "ust-gh-note" }, "共 " + model.cells.length + " 天 · 有用量 " + model.activeDays + " 天 · 峰值 " + (model.peak && model.peak.total > 0 ? fmtLarge(model.peak.total) : "—")),
+			);
+		}
+		// ---------- 分页控件（会话 / 供应商共用） ----------
+		function Pager({ page, pageCount, total, unit, onChange }) {
+			if (pageCount <= 1) return null;
+			const btn = (label, target, disabled, title) => element("button", {
+				type: "button", className: "ust-pgBtn", disabled, title,
+				onClick: () => onChange(Math.max(0, Math.min(pageCount - 1, target))),
+			}, label);
+			// 页码窗口：当前页附近最多 5 个
+			const win = [];
+			const from = Math.max(0, Math.min(page - 2, pageCount - 5));
+			for (let i = from; i < Math.min(pageCount, from + 5); i++) win.push(i);
+			return element("div", { className: "ust-pager" },
+				element("span", { className: "ust-pgInfo" }, "共 " + total + " 个" + unit + " · 第 " + (page + 1) + " / " + pageCount + " 页"),
+				element("div", { className: "ust-pgBtns" },
+					btn("上一页", page - 1, page === 0, "上一页"),
+					win.map((i) => element("button", {
+						key: i, type: "button",
+						className: "ust-pgBtn" + (i === page ? " is-active" : ""),
+						"aria-current": i === page ? "page" : undefined,
+						onClick: () => onChange(i),
+					}, String(i + 1))),
+					btn("下一页", page + 1, page >= pageCount - 1, "下一页"),
 				),
 			);
 		}
 		// ---------- 会话统计 / 会话模型明细 ----------
 		function SessionsView({ sessions }) {
 			const rows = sessions || [];
+			const [page, setPage] = react.useState(0);
+			const PAGE_SIZE = 10;
+			const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+			const safePage = Math.min(page, pageCount - 1);
+			const pageRows = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 			if (!rows.length) return null;
 			const grand = rows.reduce((sum, r) => sum + r.total, 0) || 0;
-			// 相对时间：今天显示时刻，更早显示日期
 			// 相对时间：今天显示时刻，更早显示日期（复用 fmtClock / dateKey）
 			const fmtWhen = (t) => {
 				if (!t) return "—";
@@ -398,7 +425,7 @@ window.__ModuleLoader__.load({
 							element("th", null, "最近活动"),
 						)),
 					element("tbody", null,
-						rows.map((r) => element("tr", { key: r.id },
+						pageRows.map((r) => element("tr", { key: r.id },
 							element("td", null, element("div", { className: "ust-tblName" },
 								element("span", { className: "ust-ellip", title: r.title || r.id }, r.title || r.id))),
 							element("td", { className: "ust-tblNum" }, String(r.turns || 0)),
@@ -412,12 +439,17 @@ window.__ModuleLoader__.load({
 					),
 				),
 			),
+				rows.length > PAGE_SIZE ? element(Pager, { page: safePage, pageCount, total: rows.length, unit: "会话", onChange: setPage }) : null,
 		);
 		}
 		// ---------- 供应商用量统计 ----------
-		// ---------- 供应商用量统计 ----------
 		function ProvidersView({ providers }) {
 			const rows = providers || [];
+			const [page, setPage] = react.useState(0);
+			const PAGE_SIZE = 10;
+			const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+			const safePage = Math.min(page, pageCount - 1);
+			const pageRows = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 			if (!rows.length) return null;
 			const grand = rows.reduce((sum, r) => sum + r.total, 0) || 0;
 			return element("div", { className: "ust-block" },
@@ -440,7 +472,7 @@ window.__ModuleLoader__.load({
 							element("th", null, "模型明细"),
 						)),
 					element("tbody", null,
-						rows.map((r) => element("tr", { key: r.provider },
+						pageRows.map((r) => element("tr", { key: r.provider },
 							element("td", null, element("div", { className: "ust-tblName" },
 								element("span", { className: "ust-dot", style: { background: r.color || "var(--ink)" } }),
 								element("span", { className: "ust-ellip", title: r.provider }, r.provider))),
@@ -455,6 +487,7 @@ window.__ModuleLoader__.load({
 					),
 				),
 			),
+				rows.length > PAGE_SIZE ? element(Pager, { page: safePage, pageCount, total: rows.length, unit: "供应商", onChange: setPage }) : null,
 		);
 		}
 		function Trend({ days, window: wnd }) {
@@ -849,8 +882,8 @@ window.__ModuleLoader__.load({
 				data.warnings && data.warnings.length > 0 ? element("div", { className: "ust-warn" }, data.warnings.join("；")) : null,
 				hasData && wnd.dateKeys.length > 0 ? element(Trend, { days, window: wnd }) : null,
 				hasData && wnd.dateKeys.length > 0 ? element(Donut, { days, window: wnd }) : null,
-			element(SessionsView, { sessions: data.sessions }),
 			element(ProvidersView, { providers: data.providers }),
+			element(SessionsView, { sessions: data.sessions }),
 				element("div", { className: "ust-footer" },
 					element("div", { className: "ust-meta" },
 						loading ? "正在重新扫描全部会话…" : (data.generatedAt ? "数据更新于 " + fmtClock(data.generatedAt) : ""),
@@ -884,6 +917,22 @@ window.__ModuleLoader__.load({
 			);
 		}
 
+		// ---------- 侧边栏菜单项（原生 panellist 风格） ----------
+		const PANEL_ID = "token-usage";
+		function UsageStatsPanelIcon({ size }) {
+			return element("span", { className: "ust-panelGlyph", style: { width: (size || 16) + "px", height: (size || 16) + "px" } }, element(IconTrend));
+		}
+
+		// ---------- 主区域页面（点击菜单后显示） ----------
+		function UsageStatsPage() {
+			return element("div", { className: "ust-page" },
+				element("div", { className: "ust-pageHead" },
+					element("h1", { className: "ust-pageTitle" }, "用量统计"),
+					element("p", { className: "ust-pageSub" }, "按天 / 按小时趋势、模型用量与活跃热力图"),
+				),
+				element("div", { className: "ust-pageBody" }, element(UsageStatsContent)),
+			);
+		}
 		// ---------- 弹窗容器（对齐 dsh-token-usage 的展示方式） ----------
 		function UsageStatsModal(props) {
 			const { onClose } = props;
@@ -942,11 +991,18 @@ window.__ModuleLoader__.load({
 					style.remove();
 				};
 			});
-			ctx.slots.inject("sidebar.footer.action", () => ctx.slots.register({
-				name: "sidebar.footer.action",
-				id: "usage-stats",
-				order: 31,
-			}, UsageStatsAction));
+			// 侧边栏菜单项：与原生「插件」「定时任务」同级（插件 order 0，本项 20）
+			ctx.slots.inject("sidebar.panellist", () => ctx.slots.register({
+				name: "sidebar.panellist",
+				id: PANEL_ID,
+				order: 20,
+				label: () => "用量统计",
+			}, UsageStatsPanelIcon));
+			// 主区域页面：点击菜单后渲染的内容（keyed by PANEL_ID）
+			ctx.slots.inject("main", () => ctx.slots.register({
+				name: "main",
+				key: PANEL_ID,
+			}, UsageStatsPage));
 		}
 
 		exports.apply = apply;
