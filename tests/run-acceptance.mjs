@@ -65,6 +65,13 @@ ok("入口字号 14px", c.includes("font-size:14px"));
 ok("入口整行宽（width:100%）", c.includes("width:100%"));
 ok("窄栏形态保留", c.includes("ust-fabBtn--rail"));
 
+section("客户端：本次改动（热力图/指标/圆环）");
+ok("热力图只保留每日模式", !c.includes("HEAT_MODES") && !c.includes("isWeekly") && !c.includes("isCum"));
+ok("单日窗口隐藏活跃天数", c.includes("singleDayWindow ? null : element(Metric, { icon: element(IconCalendar)"));
+ok("单日窗口隐藏日均", c.includes("singleDayWindow ? null : element(Metric, { icon: element(IconTrend)"));
+ok("圆环与列表水平并排", c.includes("flex-direction: row") && c.includes(".ust-donut-wrap > .ust-models"));
+ok("窄容器可换行回堆叠", c.includes("flex-wrap: wrap"));
+
 section("客户端：数据与外壳");
 ok("数据源为 /api/usage-stats", c.includes('fetch("/api/usage-stats"'));
 ok("exports.apply 完好", c.includes("exports.apply = apply;"));

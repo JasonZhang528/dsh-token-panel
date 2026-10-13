@@ -76,6 +76,14 @@ results["弹窗未打开时页面无残留"] = true;
   results["区间标签可用"] = closing.tabs > 5;
   results["切换区间后重新渲染"] = typeof closing.afterTab === "string" && closing.afterTab.length > 10;
 
+  // 本次改动：热力图单模式 / 单日指标 / 圆环横排
+  const trio = JSON.parse(await ev("async () => { window.dispatchEvent(new KeyboardEvent(\"keydown\",{key:\"Escape\",bubbles:true})); await new Promise(r=>setTimeout(r,1200)); document.querySelector(\".ust-fabBtn\").click(); await new Promise(r=>setTimeout(r,4000)); const b=document.querySelector(\".ust-panelBody\"); const heat=b.querySelectorAll(\".ust-block\")[0]; const heatTabs=heat?heat.querySelectorAll(\".ust-tab\").length:0; const labels=[...b.querySelectorAll(\".ust-metric-label\")].map(x=>x.textContent.trim()); const active=[...b.querySelectorAll(\".ust-tab.active\")].map(x=>x.textContent.trim()); const wrap=b.querySelector(\".ust-donut-wrap\"); const donut=wrap?wrap.querySelector(\".ust-donut\"):null; const list=wrap?wrap.querySelector(\".ust-models\"):null; const dr=donut?donut.getBoundingClientRect():null; const lr=list?list.getBoundingClientRect():null; return JSON.stringify({ heatTabs, labels, active, sideBySide: !!(dr&&lr&&lr.left>dr.right-2) }); }"));
+  console.log("TRIO " + JSON.stringify(trio));
+  results["热力图无模式切换标签"] = trio.heatTabs === 0;
+  results["单日窗口隐藏活跃天数"] = Array.isArray(trio.labels) && !trio.labels.includes("活跃天数");
+  results["单日窗口隐藏日均"] = Array.isArray(trio.labels) && !trio.labels.includes("日均");
+  results["圆环与列表水平并排"] = trio.sideBySide === true;
+
   // 本次改动：区块标题 / 默认区间 / 入口形态
   const changes = JSON.parse(await ev("async () => { window.dispatchEvent(new KeyboardEvent(\"keydown\",{key:\"Escape\",bubbles:true})); await new Promise(r=>setTimeout(r,1200)); document.querySelector(\".ust-fabBtn\").click(); await new Promise(r=>setTimeout(r,4000)); const b=document.querySelector(\".ust-panelBody\"); const h2=[...b.querySelectorAll(\"h2\")].map(x=>x.textContent.trim()); const active=[...b.querySelectorAll(\".ust-tab.active\")].map(x=>x.textContent.trim()); const btn=document.querySelector(\".ust-fabBtn\"); const cs=getComputedStyle(btn); return JSON.stringify({ headings: h2, activeTabs: active, btnH: cs.height, btnRadius: cs.borderRadius, btnFont: cs.fontSize }); }"));
   console.log("CHANGES " + JSON.stringify(changes));

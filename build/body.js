@@ -254,15 +254,10 @@ window.__ModuleLoader__.load({
 
 		// ---------- 1) 活跃热力图 ----------
 		// 日历点阵：一格一天，点面积 = 当天用量（sqrt 换算，面积才与数值成正比）
-		const HEAT_MODES = [
-			{ id: "daily", label: "每日" },
-			{ id: "weekly", label: "每周" },
-			{ id: "cumulative", label: "累计" },
-		];
+		// 只保留「每日」一种展示：一格一天
 		const WD = ["日", "一", "二", "三", "四", "五", "六"];
 
 		function Heatmap({ days, window: wnd }) {
-			const [mode, setMode] = react.useState("daily");
 			const [boxRef, boxW] = useMeasure();
 			const [placeTip, clearTip, tipEl] = useTip();
 			const scrollRef = react.useRef(null);
@@ -287,48 +282,28 @@ window.__ModuleLoader__.load({
 				const gridStart = new Date(start);
 				gridStart.setDate(gridStart.getDate() - gridStart.getDay());
 
-				const cumMap = new Map();
-				let cum = 0;
-				(days || []).forEach((d) => { cum += totalOf(d); cumMap.set(d.date, cum); });
-
 				const cells = [];
-				const weeks = new Map();
-				let maxDay = 0, maxCum = 0, peak = null;
+				let maxDay = 0, peak = null;
 				for (let cur = new Date(gridStart); cur <= today; cur.setDate(cur.getDate() + 1)) {
 					const key = dateKey(cur);
 					const day = map.get(key);
 					const total = totalOf(day);
-					if (cumMap.has(key)) cum = cumMap.get(key);
 					const col = Math.round((cur - gridStart) / 86400000 / 7);
-					const cell = { key, col, row: cur.getDay(), total, cum, turns: turnsOf(day), month: cur.getMonth() + 1, dom: cur.getDate(), idx: cells.length };
+					const cell = { key, col, row: cur.getDay(), total, turns: turnsOf(day), month: cur.getMonth() + 1, dom: cur.getDate(), idx: cells.length };
 					cells.push(cell);
 					if (total > maxDay) { maxDay = total; peak = cell; }
-					if (cum > maxCum) maxCum = cum;
-					// 每周档：同一「周列」(col 相同) 即同一周，按列号分桶
-					const wk = col;
-					let bucket = weeks.get(wk);
-					if (!bucket) { bucket = { col, total: 0, first: key, last: key }; weeks.set(wk, bucket); }
-					bucket.total += total;
-					bucket.last = key;
-					if (cur.getDate() === 1) bucket.mark = cur.getMonth() + 1;
 				}
-				const weekCells = [...weeks.values()];
-				let maxWeek = 0;
-				weekCells.forEach((w) => { if (w.total > maxWeek) maxWeek = w.total; });
-				const cols = Math.max(1, ...cells.map((c) => c.col + 1), ...weekCells.map((w) => w.col + 1));
-				return { cells, cols, maxDay, maxCum, weekCells, maxWeek, peak, today };
+				const cols = Math.max(1, ...cells.map((c) => c.col + 1));
+				return { cells, cols, maxDay, peak, today };
 			}, [days, wnd]);
 
-			const isWeekly = mode === "weekly";
-			const isCum = mode === "cumulative";
-			const maxVal = isCum ? model.maxCum : model.maxDay;
-			const maxWk = model.maxWeek;
+			const maxVal = model.maxDay;
 
 			// 窗口 ≤ 70 天：单行点阵（窄面板里最省空间、点最大）；
 			// 更长：7 行日历（列 = 周，行 = 星期），列多时横向滚动。
-			const singleRow = !isWeekly && model.cells.length <= 70;
-			const rows = (isWeekly || singleRow) ? 1 : 7;
-			const nCols = isWeekly ? model.weekCells.length : (singleRow ? model.cells.length : model.cols);
+			const singleRow = model.cells.length <= 70;
+			const rows = singleRow ? 1 : 7;
+			const nCols = singleRow ? model.cells.length : model.cols;
 			const PAD_L = rows === 1 ? 6 : 26, PAD_T = 26, PAD_B = 30;
 			const avail = Math.max(180, boxW - PAD_L - 6);
 			const cap = rows === 1 ? 26 : 17;
@@ -339,13 +314,13 @@ window.__ModuleLoader__.load({
 			const H = PAD_T + rows * pitch + PAD_B;
 			const scrolls = W > boxW + 2;
 			// 单行档：点按序号排；7 行档：点按周列 × 星期行
-			const colOf = (c) => (isWeekly ? c.col : (singleRow ? c.idx : c.col));
-			const rowOf = (c) => (isWeekly || singleRow ? 0 : c.row);
+			const colOf = (c) => (singleRow ? c.idx : c.col);
+			const rowOf = (c) => (singleRow ? 0 : c.row);
 
 			react.useEffect(() => {
 				const el = scrollRef.current;
 				if (el && scrolls) requestAnimationFrame(() => { el.scrollLeft = el.scrollWidth; });
-			}, [mode, scrolls, model]);
+			}, [scrolls, model]);
 
 			// 交互命中格：每格一个透明矩形铺满 pitch×pitch。
 			// 圆点半径受 pitch 限制做不到 ≥7px 又不互相重叠，矩形可无缝铺满 = 无死角、零重叠
@@ -365,54 +340,37 @@ window.__ModuleLoader__.load({
 			const cy = (row) => PAD_T + row * pitch + pitch / 2;
 
 			const marks = [];
-			if (isWeekly) {
-				model.weekCells.forEach((w, i) => {
-					const x = cx(i), y = cy(0);
-					const title = fmtDayLabel(w.first) + " 至 " + fmtDayLabel(w.last);
-					if (!(w.total > 0)) {
-						marks.push(element("circle", { key: "q" + i, className: "ust-dot-quiet", cx: x, cy: y, r: 1.4 }));
-					} else {
-						marks.push(element("circle", { key: "w" + i, className: qF(qLevel(w.total, maxWk)), cx: x, cy: y, r: rOf(w.total, maxWk) }));
-					}
-					marks.push(hitCell(i, 0, "h" + i, title, w.total > 0 ? fmtFull(w.total) + " tokens" : "当周无用量"));
-					// 日期标签放在点带下方，不与点重叠
-					if (i % 4 === 0) marks.push(element("text", { key: "wl" + i, className: "ust-axis", x: x, y: cy(0) + rMax + 13, textAnchor: "middle" }, fmtDayLabel(w.first).replace(" ", "")));
-				});
-			} else {
-				model.cells.forEach((c, i) => {
-					const x = cx(colOf(c)), y = cy(rowOf(c));
-					const v = isCum ? c.cum : c.total;
-					if (v > 0) {
-						marks.push(element("circle", { key: "d" + i, className: qF(qLevel(v, maxVal)), cx: x, cy: y, r: rOf(v, maxVal) }));
-					} else {
-						marks.push(element("circle", { key: "q" + i, className: "ust-dot-quiet", cx: x, cy: y, r: 1.4 }));
-					}
-					// 视觉点不绑事件，交互统一交给命中格
-					const body = isCum
-						? "累计 " + fmtFull(c.cum) + " tokens"
-						: (v > 0 ? fmtFull(c.total) + " tokens · " + c.turns + " 轮" : "当日无用量");
-					marks.push(hitCell(colOf(c), rowOf(c), "h" + i, fmtDayLabel(c.key), body));
-				});
-			}
+			model.cells.forEach((c, i) => {
+				const x = cx(colOf(c)), y = cy(rowOf(c));
+				const v = c.total;
+				if (v > 0) {
+					marks.push(element("circle", { key: "d" + i, className: qF(qLevel(v, maxVal)), cx: x, cy: y, r: rOf(v, maxVal) }));
+				} else {
+					marks.push(element("circle", { key: "q" + i, className: "ust-dot-quiet", cx: x, cy: y, r: 1.4 }));
+				}
+				// 视觉点不绑事件，交互统一交给命中格
+				const body = v > 0 ? fmtFull(c.total) + " tokens · " + c.turns + " 轮" : "当日无用量";
+				marks.push(hitCell(colOf(c), rowOf(c), "h" + i, fmtDayLabel(c.key), body));
+			});
 
 			// 星期轴（周日在上）
-			const wdAxis = (isWeekly || singleRow) ? null : WD.map((lab, k) =>
+			const wdAxis = singleRow ? null : WD.map((lab, k) =>
 				k % 2 === 0 ? element("text", { key: "wd" + k, className: "ust-axis", x: PAD_L - 8, y: cy(k) + 4, textAnchor: "end" }, lab) : null);
 
 			// 月份标（该列含 1 号）
-			const marks2 = (isWeekly ? model.weekCells : model.cells)
-				.filter((c) => (isWeekly ? c.mark : (singleRow ? (c.dom === 1 || c.idx % 5 === 0) : c.dom === 1)))
+			const marks2 = model.cells
+				.filter((c) => (singleRow ? (c.dom === 1 || c.idx % 5 === 0) : c.dom === 1))
 				.map((c, i) => {
-					const x = cx(isWeekly ? c.col : (singleRow ? c.idx : c.col));
+					const x = cx(singleRow ? c.idx : c.col);
 					return element("g", { key: "m" + i },
-						element("text", { className: "ust-axis", x: x, y: PAD_T - 9, textAnchor: "middle" }, singleRow ? (c.dom === 1 ? c.month + "月" : c.dom + "日") : (c.mark || c.month) + "月"),
+						element("text", { className: "ust-axis", x: x, y: PAD_T - 9, textAnchor: "middle" }, singleRow ? (c.dom === 1 ? c.month + "月" : c.dom + "日") : c.month + "月"),
 						element("line", { className: "ust-floor-tick", x1: x, y1: PAD_T - 5, x2: x, y2: PAD_T - 2 }),
 					);
 				});
 
 			// 峰值标注（仅每日档，且不与月份标冲突）
 			// 峰值标注：默认放点的下方（上方是日期轴）；贴底时改放上方
-			const peakMark = (!isWeekly && !isCum && model.peak && model.peak.total > 0)
+			const peakMark = (model.peak && model.peak.total > 0)
 				? (() => {
 					const x = cx(colOf(model.peak)), y = cy(rowOf(model.peak)), r = rOf(model.peak.total, maxVal);
 					const below = y + r + 16 <= H - 4;
@@ -427,11 +385,7 @@ window.__ModuleLoader__.load({
 				})()
 				: null;
 
-			const caption = isWeekly
-				? "一点 = 一周，点面积 = 当周 Token，小点 = 当周无用量"
-				: isCum
-					? "一点 = 一天，点面积 = 累计 Token，小点 = 当日无用量"
-					: "一点 = 一天，点面积 = 当日 Token，小点 = 当日无用量";
+			const caption = "一点 = 一天，点面积 = 当日 Token，小点 = 当日无用量";
 
 			return element("div", { className: "ust-block" },
 				element("div", { className: "ust-block-head" },
@@ -446,17 +400,10 @@ window.__ModuleLoader__.load({
 							element("span", { className: "ust-scale-lab" }, "多"),
 						),
 					),
-					element("div", { className: "ust-tabs", role: "tablist" },
-						HEAT_MODES.map((m) => element("span", {
-							key: m.id, role: "tab", "aria-selected": mode === m.id,
-							className: "ust-tab" + (mode === m.id ? " active" : ""),
-							onClick: () => setMode(m.id),
-						}, m.label)),
-					),
 				),
 				element("div", { ref: boxRef },
 					element("div", { className: "ust-plot" + (scrolls ? " is-scroll" : ""), ref: scrollRef },
-						boxW > 0 ? element("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "活跃热力图热力图" },
+						boxW > 0 ? element("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "活跃热力图" },
 							wdAxis, marks2, marks, peakMark,
 						) : null,
 					),
@@ -798,6 +745,8 @@ window.__ModuleLoader__.load({
 				? "占本窗口 " + Math.round((winTop.total / stats.total) * 100) + "%"
 				: "";
 			const avgPerActive = stats.activeDays > 0 ? stats.total / stats.activeDays : 0;
+			// 统计周期只有一天时，「活跃天数」「日均」恒为 1 / 等于总量，无信息量，不展示
+			const singleDayWindow = (wnd.dateKeys || []).length <= 1;
 			const invalid = !!(from && to && from > to);
 
 			return element("div", { className: "ust-root" },
@@ -837,8 +786,8 @@ window.__ModuleLoader__.load({
 				),
 				element("div", { className: "ust-metrics" },
 					element(Metric, { icon: element(IconToken), label: "窗口 Token", value: fmtLarge(stats.total), sub: fmtFull(stats.total) }),
-					element(Metric, { icon: element(IconCalendar), label: "活跃天数", value: String(stats.activeDays) + " 天", sub: "有用量的天" }),
-					element(Metric, { icon: element(IconTrend), label: "日均", value: fmtLarge(avgPerActive), sub: "按活跃天平均" }),
+					singleDayWindow ? null : element(Metric, { icon: element(IconCalendar), label: "活跃天数", value: String(stats.activeDays) + " 天", sub: "有用量的天" }),
+					singleDayWindow ? null : element(Metric, { icon: element(IconTrend), label: "日均", value: fmtLarge(avgPerActive), sub: "按活跃天平均" }),
 					element(Metric, { icon: element(IconChat), label: "会话累计", value: fmtFull((data && data.sessionCount) || 0), sub: "全部历史" }),
 					element(Metric, { icon: element(IconMail), label: "消息累计", value: fmtFull((data && data.messageCount) || 0), sub: "全部历史" }),
 					element(Metric, { icon: element(IconBolt), label: "最常用模型", value: topName, sub: topSub, text: true }),
