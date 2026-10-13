@@ -4,6 +4,24 @@ DeepSeek Harness 的**侧边栏 Token 用量面板**：在左侧边栏底部（�
 
 面板内容：按天 / 按小时趋势图、模型用量仪表盘、活跃热力图，支持 **今天 / 昨天 / 近 7 天 / 近 30 天 / 本月 / 上月 / 全部 / 自定义** 区间。
 
+## 效果图
+
+### 侧边栏入口
+
+设置按钮上方的「使用统计」即为本插件入口（与内置项同一视觉层级）：
+
+![侧边栏入口](assets/sidebar-entry.png)
+
+### 统计面板 · 浅色主题
+
+![统计面板 · 浅色](assets/panel-light.png)
+
+### 统计面板 · 深色主题
+
+自动跟随 DSH 主题切换：
+
+![统计面板 · 深色](assets/panel-dark.png)
+
 > 本项目基于 [Amer-CN/zcode-usage-stats](https://github.com/Amer-CN/zcode-usage-stats)（MIT）改造：
 > 将原本挂在**设置页**的视图改为**侧边栏弹窗**，槽位与交互对齐 [dsh-token-usage](https://www.npmjs.com/package/@zerro223/dsh-token-usage) 的展示方式。
 
