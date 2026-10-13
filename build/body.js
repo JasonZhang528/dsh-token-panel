@@ -155,7 +155,7 @@ window.__ModuleLoader__.load({
 .ust-fab{position:relative;display:flex;flex:1 1 100%;min-width:0;margin:4px -2px}
 .ust-fabBtn{min-width:0;width:100%;height:42px;box-sizing:border-box;color:var(--dsw-alias-label-primary,#0f1115);cursor:pointer;background:transparent;border:0;border-radius:12px;padding:0 10px 0 8px;font:inherit;font-size:14px;line-height:22px;display:flex;align-items:center;gap:8px;transition:color .15s ease,background-color .15s ease}
 .ust-fabBtn:hover,.ust-fabBtn:focus-visible{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}
-.ust-fabBtn--rail{width:42px;height:42px;padding:0;justify-content:center;margin:0 auto}
+.ust-fabBtn--rail{width:42px;height:42px;padding:0;justify-content:center;margin:0}
 .ust-fabLabel{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ust-fabIco{display:inline-flex;width:16px;height:16px;flex:none}
 .ust-fabIco svg{width:100%;height:100%}
@@ -163,24 +163,24 @@ window.__ModuleLoader__.load({
 /* 遮罩与面板 */
 .ust-overlay{position:fixed;inset:0;z-index:900}
 .ust-mask{position:absolute;inset:0;background:var(--dsw-alias-bg-mask-2,rgba(0,0,0,.35));backdrop-filter:blur(2px);animation:ustFadeIn .22s ease both}
-.ust-panel{position:absolute;top:50%;left:50%;width:min(1120px,calc(100vw - 40px));height:min(calc(100vh - 48px),820px);max-width:calc(100vw - 40px);max-height:calc(100vh - 48px);box-sizing:border-box;background:var(--dsw-alias-bg-layer-2,#fff);border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));border-radius:16px;box-shadow:var(--dsw-shadow-lv3,0 12px 40px rgba(0,0,0,.18));display:flex;flex-direction:column;overflow:hidden;transform:translate(-50%,-50%);animation:ustPanelIn .32s cubic-bezier(.16,1,.3,1) both}
+.ust-panel{position:absolute;top:0;left:0;right:0;bottom:0;margin:auto;width:min(1120px,calc(100vw - 40px));height:min(calc(100vh - 48px),820px);max-width:calc(100vw - 40px);max-height:calc(100vh - 48px);box-sizing:border-box;background:var(--dsw-alias-bg-layer-2,#fff);border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));border-radius:16px;box-shadow:var(--dsw-shadow-lv3,0 12px 40px rgba(0,0,0,.18));display:flex;flex-direction:column;overflow:hidden;animation:ustPanelIn .32s cubic-bezier(.16,1,.3,1) both}
 .ust-overlay.is-closing .ust-mask{animation:ustFadeOut .18s ease both}
 .ust-overlay.is-closing .ust-panel{animation:ustPanelOut .18s ease both}
 @keyframes ustFadeIn{from{opacity:0}to{opacity:1}}
 @keyframes ustFadeOut{from{opacity:1}to{opacity:0}}
-@keyframes ustPanelIn{from{opacity:0;transform:translate(-50%,-46%) scale(.97)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
-@keyframes ustPanelOut{from{opacity:1;transform:translate(-50%,-50%) scale(1)}to{opacity:0;transform:translate(-50%,-46%) scale(.98)}}
+@keyframes ustPanelIn{from{opacity:0;scale:.97}to{opacity:1;scale:1}}
+@keyframes ustPanelOut{from{opacity:1;scale:1}to{opacity:0;scale:.98}}
 @media (prefers-reduced-motion: reduce){.ust-mask,.ust-panel{animation:none!important}}
 
 /* 面板头部 / 主体 */
-.ust-panelHead{flex:none;display:flex;align-items:center;gap:14px;padding:18px 24px 14px;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}
+.ust-panelHead{flex:none;display:flex;align-items:center;gap:14px;padding:14px 24px 10px;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}
 .ust-panelTitleBox{flex:1 1 auto;min-width:0;display:flex;flex-direction:row;align-items:baseline;gap:10px}
 .ust-panelTitle{margin:0;color:var(--dsw-alias-label-primary,#191918);font-size:16px;font-weight:600;line-height:22px}
 .ust-panelSub{margin:0;color:var(--dsw-alias-label-tertiary,#86857F);font-size:12px;line-height:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ust-closeBtn{flex:none;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;color:var(--dsw-alias-label-tertiary,#86857F);background:transparent;border:0;border-radius:8px;cursor:pointer;transition:color .15s ease,background-color .15s ease}
 .ust-closeBtn:hover{color:var(--dsw-alias-label-primary,#191918);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}
 .ust-closeBtn svg{width:16px;height:16px}
-.ust-panelBody{flex:1 1 auto;min-height:0;overflow:auto;padding:20px 24px 24px}
+.ust-panelBody{flex:1 1 auto;min-height:0;overflow:auto;padding:12px 24px 20px}
 /* 弹窗已有标题，隐藏视图内重复的 h1 */
 .ust-panelBody .ust-page-title{display:none}
 `;
@@ -248,6 +248,8 @@ window.__ModuleLoader__.load({
 				setTip({ node, x, y });
 			};
 			const clear = () => setTip(null);
+			// .ust-panel 已改用 flex/margin 居中（无 transform），
+			// 因此 position:fixed 的包含块回到视口，坐标可直接用 clientX/clientY。
 			const el = tip ? element("div", { className: "ust-tip", style: { left: tip.x + "px", top: tip.y + "px" } }, tip.node) : null;
 			return [place, clear, el];
 		}
@@ -298,11 +300,23 @@ window.__ModuleLoader__.load({
 				return r > 0.66 ? 4 : r > 0.33 ? 3 : r > 0.12 ? 2 : 1;
 			};
 
-			const CELL = 13, GAP = 3, PAD_L = 28, PAD_T = 20, PAD_B = 8;
+			const CELL = 13, GAP = 3, MONTH_GAP = 10, PAD_L = 28, PAD_T = 20, PAD_B = 8;
 			const cols = 53, rows = 7;
-			const W = PAD_L + cols * (CELL + GAP) - GAP + 2;
+			// 每月之间额外留白，月份边界一眼可辨
+			const colX = [];
+			{
+				let lastM = -1;
+				for (let c0 = 0; c0 < cols; c0++) {
+					const cell = model.cells.find((x) => x.col === c0);
+					const m = cell ? cell.month : -1;
+					const extra = (lastM !== -1 && m !== lastM) ? MONTH_GAP : 0;
+					colX[c0] = (c0 === 0 ? PAD_L : colX[c0 - 1] + CELL + GAP) + extra;
+					lastM = m;
+				}
+			}
+			const W = (colX[cols - 1] || PAD_L) + CELL + 2;
 			const H = PAD_T + rows * (CELL + GAP) - GAP + PAD_B;
-			const cx = (col) => PAD_L + col * (CELL + GAP);
+			const cx = (col) => colX[col] || 0;
 			const cy = (row) => PAD_T + row * (CELL + GAP);
 
 			// 月份标尺（出现新的月份时标注）
@@ -320,7 +334,7 @@ window.__ModuleLoader__.load({
 
 			return element("div", { className: "ust-block" },
 				element("div", { className: "ust-block-head" },
-					element("div", null,
+					element("div", { className: "ust-block-titleRow" },
 						element("h2", { className: "ust-h2" }, "活跃热力图"),
 						element("div", { className: "ust-sub" }, "一块 = 一天，颜色越深 = 当日 Token 越多；最近一年"),
 						element("div", { className: "ust-gh-scale" },
@@ -366,7 +380,7 @@ window.__ModuleLoader__.load({
 			};
 			return element("div", { className: "ust-block" },
 				element("div", { className: "ust-block-head" },
-					element("div", null,
+					element("div", { className: "ust-block-titleRow" },
 						element("h2", { className: "ust-h2" }, "会话统计"),
 						element("div", { className: "ust-sub" }, "全部历史会话的 Token 用量与会话内模型明细"),
 					),
@@ -408,7 +422,7 @@ window.__ModuleLoader__.load({
 			const grand = rows.reduce((sum, r) => sum + r.total, 0) || 0;
 			return element("div", { className: "ust-block" },
 				element("div", { className: "ust-block-head" },
-					element("div", null,
+					element("div", { className: "ust-block-titleRow" },
 						element("h2", { className: "ust-h2" }, "供应商用量统计"),
 						element("div", { className: "ust-sub" }, "按 API 提供商汇总，含各家模型明细"),
 					),
@@ -568,7 +582,7 @@ window.__ModuleLoader__.load({
 
 			return element("div", { className: "ust-block" },
 				element("div", { className: "ust-block-head" },
-					element("div", null,
+					element("div", { className: "ust-block-titleRow" },
 						element("h2", { className: "ust-h2" }, isHour ? "按小时的用量分布" : "用量趋势"),
 						element("div", { className: "ust-sub" }, "一条线 = 一个模型，圆点 = 当期用量，颜色 = 模型"),
 					),
@@ -677,7 +691,7 @@ window.__ModuleLoader__.load({
 
 			return element("div", { className: "ust-block" },
 				element("div", { className: "ust-block-head" },
-					element("div", null,
+					element("div", { className: "ust-block-titleRow" },
 						element("h2", { className: "ust-h2" }, "模型用量"),
 						element("div", { className: "ust-sub" }, "一刻度 = 1%，每 10 刻一枚锚点，颜色 = 模型"),
 					),
@@ -924,7 +938,9 @@ window.__ModuleLoader__.load({
 				style.dataset.plugin = "dsh-token-panel";
 				style.textContent = CSS + MODAL_CSS;
 				document.head.appendChild(style);
-				return () => { style.remove(); };
+				return () => {
+					style.remove();
+				};
 			});
 			ctx.slots.inject("sidebar.footer.action", () => ctx.slots.register({
 				name: "sidebar.footer.action",

@@ -4,7 +4,8 @@ DeepSeek Harness 的**侧边栏 Token 用量面板**：在左侧边栏底部（�
 
 面板内容：按天 / 按小时趋势图、模型用量刻度环、活跃热力图，支持 **今天 / 昨天 / 近 7 天 / 近 30 天 / 本月 / 上月 / 全部 / 自定义** 区间。**默认展示今天。**
 
-- **活跃热力图**为 GitHub 贡献网格风格，固定展示最近一年，五档色阶按当日用量着色。
+- **活跃热力图**为 GitHub 贡献网格风格，固定展示最近一年，五档色阶按当日用量着色；月份之间有明显间隔，整块占满面板宽度。
+- 折线图 / 刻度环悬停 Tooltip 跟随鼠标（面板改用 flex 居中，避免 `transform` 破坏 `position:fixed`）。
 - 统计周期只有一天时，自动隐藏「活跃天数」「日均」两张恒定卡片。
 - 模型刻度环占 **40%** 宽，模型明细占 **60%**，并排展示。
 - 日期选择栏滚动时冻结在标题下方。
@@ -34,6 +35,12 @@ DeepSeek Harness 的**侧边栏 Token 用量面板**：在左侧边栏底部（�
 底部两张表格：会话维度（含模型明细）与供应商维度：
 
 ![会话与供应商统计](assets/panel-tables.png)
+
+### 折线图 Tooltip
+
+悬停显示各模型用量，跟随鼠标移动：
+
+![折线图 Tooltip](assets/panel-tooltip.png)
 
 > 本项目基于 [Amer-CN/zcode-usage-stats](https://github.com/Amer-CN/zcode-usage-stats)（MIT）改造：
 > 将原本挂在**设置页**的视图改为**侧边栏弹窗**，槽位与交互对齐 [dsh-token-usage](https://www.npmjs.com/package/@zerro223/dsh-token-usage) 的展示方式。

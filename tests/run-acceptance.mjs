@@ -55,6 +55,11 @@ ok("弹窗样式已定义", c.includes("const MODAL_CSS = `"));
 ok("样式合并注入", c.includes("CSS + MODAL_CSS"));
 ok("视图内重复标题被隐藏", c.includes(".ust-panelBody .ust-page-title{display:none}"));
 
+section("客户端：本轮改动（tooltip 修复）");
+ok("面板不再用 transform 居中", !c.includes("transform:translate(-50%,-50%)"));
+ok("面板改用 margin:auto 居中", c.includes("top:0;left:0;right:0;bottom:0;margin:auto"));
+ok("tooltip 仍为 position:fixed", c.includes(".ust-tip {") && /position: *fixed/.test(c));
+
 section("客户端：本次改动");
 ok("区块标题为「活跃热力图」", c.includes("活跃热力图"));
 ok("无「活跃分布」残留", !c.includes("活跃分布"));

@@ -69,8 +69,8 @@ body[data-ds-dark-theme] .ust-root {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px 16px;
-  margin: 0 -4px 20px;
-  padding: 10px 4px;
+  margin: 0 -4px 14px;
+  padding: 8px 4px;
   background: var(--surface, #F7F6F3);
   border-bottom: 1px solid var(--rule, #C4C3BC);
 }
@@ -102,6 +102,7 @@ body[data-ds-dark-theme] .ust-tab.active { background: var(--ink); color: #19191
 
 /* ── 图表区块 ───────────────────────────────────────────── */
 .ust-block { display: flex; flex-direction: column; }
+.ust-block-titleRow { display: flex; flex-direction: row; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; min-width: 0; }
 .ust-block-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin-bottom: 14px; }
 .ust-block-head .ust-tabs { gap: 2px; }
 
@@ -296,23 +297,26 @@ body[data-ds-dark-theme] .ust-date::-webkit-calendar-picker-indicator { filter: 
 	.ust-draw { stroke-dasharray: none; stroke-dashoffset: 0; }
 }
 
+/* tooltip portal 宿主（脱离面板 transform 包含块，才能用真正的视口坐标） */
+.ust-tipRoot { position: fixed; top: 0; left: 0; z-index: 10000; pointer-events: none; }
+
 /* ── 活跃热力图（GitHub 贡献网格风格） ── */
-.ust-gh-wrap { overflow-x: auto; overflow-y: hidden; padding: 4px 0 2px; }
+.ust-gh-wrap { width: 100%; overflow-x: auto; overflow-y: hidden; padding: 4px 0 2px; }
 .ust-gh-wrap svg { display: block; }
 .ust-gh-cell { stroke: rgba(0,0,0,.05); stroke-width: 1; }
 body[data-ds-dark-theme] .ust-gh-cell { stroke: rgba(255,255,255,.06); }
 .ust-gh-cell.is-today { stroke: var(--ink); stroke-width: 1.5; }
 /* 五档底色：0 = 无数据 */
-.ust-gh-lv0 { fill: var(--quiet, #C4C3BC); }
-.ust-gh-lv1 { fill: var(--q1, #9CBEE6); }
-.ust-gh-lv2 { fill: var(--q2, #5B8FD4); }
-.ust-gh-lv3 { fill: var(--q3, #2C6BC4); }
-.ust-gh-lv4 { fill: var(--q4, #123C74); }
-body[data-ds-dark-theme] .ust-gh-lv0 { fill: #35342F; }
-body[data-ds-dark-theme] .ust-gh-lv1 { fill: #2A4C7A; }
-body[data-ds-dark-theme] .ust-gh-lv2 { fill: #3F6EA8; }
-body[data-ds-dark-theme] .ust-gh-lv3 { fill: #5F97D4; }
-body[data-ds-dark-theme] .ust-gh-lv4 { fill: #9CC4EE; }
+.ust-gh-lv0 { fill: #E6E5E0; }
+.ust-gh-lv1 { fill: #A8D4F5; }
+.ust-gh-lv2 { fill: #6FBBEF; }
+.ust-gh-lv3 { fill: #3D9BE0; }
+.ust-gh-lv4 { fill: #1B7FD4; }
+body[data-ds-dark-theme] .ust-gh-lv0 { fill: #2E2D28; }
+body[data-ds-dark-theme] .ust-gh-lv1 { fill: #1F5C8B; }
+body[data-ds-dark-theme] .ust-gh-lv2 { fill: #2E7FB8; }
+body[data-ds-dark-theme] .ust-gh-lv3 { fill: #4AA3DC; }
+body[data-ds-dark-theme] .ust-gh-lv4 { fill: #7CC4F0; }
 .ust-gh-axis { fill: var(--faint, #86857F); font-size: 10px; font-family: inherit; }
 .ust-gh-scale { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
 .ust-gh-sw { width: 11px; height: 11px; border-radius: 2.5px; display: inline-block; }
