@@ -184,7 +184,7 @@ ok("圆环 tooltip 含命中率", c.includes('"命中 " + fmtFull(s.cacheRead ||
 ok("命中数据有样式", c.includes(".ust-model-hit {") && c.includes(".ust-model-rate {"));
 
 section("客户端：模型明细弹窗（会话 / 供应商共用）");
-ok("弹窗组件通用化", c.includes("function ModelsDetailModal({ title, sub, sumItems, models, onClose })"));
+ok("弹窗组件通用化", c.includes("function ModelsDetailModal({ title, sub, sumItems, models, ranks, onClose })"));
 ok("供应商弹窗改用共享组件", c.includes("detail ? element(ModelsDetailModal, {") && c.includes("title: detail.provider"));
 ok("会话弹窗已接入", c.includes("title: detail.title || detail.id") && c.includes("models: detail.byModel"));
 ok("会话行可点击", c.includes("onClick: () => setDetail(r)"));
@@ -201,6 +201,26 @@ ok("峰值柱不重复标数值", c.includes('if (!(v.total > 0) || i === peakId
 ok("零用量柱不标数值", c.includes('!(v.total > 0)'));
 ok("标签样式已定义", c.includes('.ust-bar-val {') && c.includes('stroke: var(--surface); stroke-width: 2.5px;'));
 ok("峰值判定提前", c.indexOf('let peakIdx = 0, peakVal = -1;') < c.indexOf('const bars = values.map'));
+
+section("客户端：模型配色统一");
+ok("共享配色序号", c.includes("function modelRanksIn(days, wnd)") && c.includes("function colorVarFor(model, ranks)"));
+ok("会话色点用共享序号", c.includes('title: m.model + "：" + fmtLarge(m.total), style: { background: colorVarFor(m.model, ranks) }'));
+ok("弹窗色点用共享序号", c.includes('className: "ust-dot", style: { background: colorVarFor(m.model, ranks) }'));
+ok("ranks 下发到三个视图", (c.match(/ranks: ranks/g) || []).length >= 3);
+
+section("客户端：热力图标题带日期");
+ok("标题为日期值 + 活跃热力图", c.includes('(wnd && wnd.label ? wnd.label + " " : "") + "活跃热力图"'));
+ok("子标题不再重复日期值", c.includes('"最近一年 · 活跃 " + model.activeDays + " 天"') && !c.includes('wnd.label + " · " : "") + "最近一年'));
+
+section("客户端：坐标轴全刻度");
+ok("逐格出刻度", c.includes("const xAxis = xData.map((d, i) => element(\"text\"") && !c.includes("labelEvery"));
+ok("步长下限按标签宽度", c.includes("narrow ? 48 : 56") && c.includes("narrow ? 78 : 96"));
+ok("放不下时横向滚动", c.includes("const needScroll = N > 1 && step < minStep;"));
+
+section("客户端：进入即渲染");
+ok("首次请求延后到首帧之后", c.includes("requestAnimationFrame(run)") && c.includes("cancelAnimationFrame(id)"));
+ok("日期栏外壳抽为共用元素", c.includes("const headerEl =") && c.includes("headerEl,"));
+ok("加载态先画页面骨架", c.includes('element("div", { className: "ust-placeholder" }, "正在读取本机会话记录…")'));
 
 section("客户端：用量列统一口径与次序");
 // 统一为 输入 / 输出 / 缓存命中 / 总量 / 命中率 / 占比（会话表在「消息」之后，供应商/弹窗在名称列之后）

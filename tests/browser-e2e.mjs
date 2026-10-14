@@ -114,7 +114,8 @@ try {
 
   // 区间标签
   const changes = JSON.parse(await ev("() => { const h2 = [...document.querySelectorAll('.ust-h2')].map(x => x.textContent.trim()); const active = [...document.querySelectorAll('.ust-tab.active')].map(x => x.textContent.trim()); return JSON.stringify({ headings: h2, activeTabs: active }); }"));
-  results["区块标题为「活跃热力图」"] = Array.isArray(changes.headings) && changes.headings.includes("活跃热力图");
+  // 标题现在带日期选择器取值前缀（如「今天 活跃热力图」）
+  results["区块标题为「活跃热力图」"] = Array.isArray(changes.headings) && changes.headings.some((x) => /活跃热力图$/.test(x));
   results["默认选中「今天」"] = Array.isArray(changes.activeTabs) && changes.activeTabs.includes("今天");
 
 
