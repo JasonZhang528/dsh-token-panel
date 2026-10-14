@@ -74,7 +74,7 @@ section("客户端：本次改动（热力图/指标/圆环）");
 ok("热力图只保留每日模式", !c.includes("HEAT_MODES") && !c.includes("isWeekly") && !c.includes("isCum"));
 ok("单日窗口隐藏活跃天数", c.includes("singleDayWindow ? null : element(Metric, { icon: element(IconCalendar)"));
 ok("单日窗口隐藏日均", c.includes("singleDayWindow ? null : element(Metric, { icon: element(IconTrend)"));
-ok("圆环与列表水平并排", c.includes("flex-direction: row") && c.includes(".ust-donut-wrap > .ust-models"));
+ok("圆环与列表水平并排", c.includes("flex-direction: row") && c.includes(".ust-donut-wrap > .ust-models-box"));
 ok("窄容器可换行回堆叠", c.includes("flex-wrap: wrap"));
 
 section("客户端：本轮改动（GitHub 热力图/会话与供应商/冻结/名称）");
@@ -92,7 +92,7 @@ ok("自动刷新默认开启", c.includes("react.useState(true)") && c.includes(
 ok("默认间隔 5 秒", c.includes("const [autoEvery, setAutoEvery] = react.useState(5);"));
 ok("间隔可选 5/10/30/60", c.includes("const AUTO_OPTIONS = [5, 10, 30, 60];"));
 ok("定时器随开关启停", c.includes("setInterval(() => { load(false); }") && c.includes("clearInterval(id)"));
-ok("饼图占 40% / 明细占 60%", c.includes(".ust-donut-wrap > .ust-donut { flex: 0 0 40%;") && c.includes(".ust-donut-wrap > .ust-models { flex: 1 1 0;"));
+ok("饼图占 40% / 明细占 60%", c.includes(".ust-donut-wrap > .ust-donut { flex: 0 0 40%;") && c.includes(".ust-donut-wrap > .ust-models-box { flex: 1 1 0;"));
 ok("入口铺满侧边栏行宽", c.includes(".ust-fab{position:relative;display:flex;flex:1 1 100%"));
 
 section("客户端：数据与外壳");
@@ -192,6 +192,17 @@ ok("会话行支持键盘", c.includes("onKeyDown") && c.includes("e.preventDefa
 ok("弹窗支持 Esc 关闭", c.includes("Escape") && c.includes('window.addEventListener("keydown", onKey)'));
 ok("会话逐模型四件套", c.includes("bm.cacheRead += m.cacheRead || 0"));
 ok("弹窗输出模型命中率", c.includes("fmtPct(hitRateOf(m))"));
+
+section("客户端：模型列表列名");
+ok("列表有列名表头", c.includes("ust-model--head") && c.includes('"aria-hidden": "true"'));
+ok("表头列名齐全", ["模型","缓存命中","命中率","总量","占比"].every((x) => c.includes('"' + x + '"')));
+ok("列表外层为 div 容器", c.includes('className: "ust-models-box"') && c.includes('className: "ust-models"'));
+ok("表头样式已定义", /\.ust-model--head \{/.test(c));
+ok("并排规则同步更名", c.includes(".ust-donut-wrap > .ust-models-box { flex: 1 1 0;"));
+
+section("客户端：弹窗分页");
+ok("弹窗按 10 行分页", c.includes("const PAGE_SIZE = 10;") && c.includes('pageRows.map((m) => element("tr", { key: m.model }'));
+ok("弹窗超过 10 条显示分页控件", c.includes('unit: "模型", onChange: setPage'));
 
 section("客户端：图例居中与列表对齐");
 ok("图例水平居中", c.includes("justify-content: center; }") && c.includes(".ust-legend--above"));

@@ -589,6 +589,12 @@ window.__ModuleLoader__.load({
 			}, [onClose]);
 			const rows = models || [];
 			const sum = rows.reduce((a, m) => a + (m.total || 0), 0);
+			// 模型超过一屏时分页，避免弹窗内长列表
+			const [page, setPage] = react.useState(0);
+			const PAGE_SIZE = 10;
+			const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+			const safePage = Math.min(page, pageCount - 1);
+			const pageRows = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 			return element("div", { className: "ust-dlgMask", onClick: onClose },
 				element("div", {
 					className: "ust-dlg", role: "dialog", "aria-modal": "true",
@@ -618,7 +624,7 @@ window.__ModuleLoader__.load({
 									element("th", { className: "ust-tblNum" }, "总量"),
 									element("th", { className: "ust-tblNum" }, "占比"),
 								)),
-								element("tbody", null, rows.map((m) => element("tr", { key: m.model },
+								element("tbody", null, pageRows.map((m) => element("tr", { key: m.model },
 									element("td", null, element("div", { className: "ust-tblName" },
 										element("span", { className: "ust-dot", style: { background: m.color || "var(--ink)" } }),
 										element("span", { className: "ust-ellip", title: m.model }, m.model))),
@@ -631,6 +637,7 @@ window.__ModuleLoader__.load({
 								))),
 							),
 						),
+						rows.length > PAGE_SIZE ? element(Pager, { page: safePage, pageCount, total: rows.length, unit: "模型", onChange: setPage }) : null,
 					),
 				),
 			);
@@ -955,7 +962,16 @@ window.__ModuleLoader__.load({
 								element("div", { className: "lab" }, "TOKENS"),
 							),
 						),
-						element("ul", { className: "ust-models" },
+						element("div", { className: "ust-models-box" },
+							// 列名表头：与下面各行同宽同对齐，读数字时不必猜列的含义
+							element("div", { className: "ust-model ust-model--head", "aria-hidden": "true" },
+								element("span", { className: "ust-model-name" }, "模型"),
+								element("span", { className: "ust-model-row" },
+									element("span", { className: "ust-model-hit" }, "缓存命中"),
+									element("span", { className: "ust-model-rate" }, "命中率"),
+									element("span", { className: "ust-model-sub" }, "总量"),
+									element("span", { className: "ust-model-val" }, "占比"))),
+							element("ul", { className: "ust-models" },
 							segs.map((s) => element("li", {
 								key: s.model,
 								className: "ust-model",
@@ -974,6 +990,7 @@ window.__ModuleLoader__.load({
 									element("span", { className: "ust-model-val" }, (sum > 0 ? Math.round((s.total / sum) * 100) : 0) + "%")),
 							)),
 						),
+					),
 					),
 				),
 				tipEl,
