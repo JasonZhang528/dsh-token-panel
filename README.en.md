@@ -40,7 +40,7 @@ Dark theme: <img src="assets/panel-dark.png" width="600" alt="Dark theme">
 | 🧭 **Native menu** | A native menu row directly below "Plugins" in the sidebar, styled exactly like the built-in entries; clicking it opens a main-area page |
 | 📅 **Time range** | Today / Yesterday / Last 7 days / Last 30 days / This month / Last month / All / Custom (with start–end validation); **defaults to Today**; the date bar freezes flush against the title while scrolling, and every query below it follows the selected range |
 | 🔥 **Activity heatmap** | GitHub contribution grid: week columns × weekday rows, five color levels by daily usage, months separated by gaps, covering the last year |
-| 📈 **Usage trend** | One line per model, dots for the current period, peaks labelled; the hover tooltip follows the mouse; legend toggles series |
+| 📈 **Usage trend** | Stacked bars: one bar per model, height = usage, **each bar labelled with its value** (labels thin out automatically when space is tight); the hover tooltip follows the mouse; legend toggles series |
 | 🍩 **Model usage** | Dial gauge: 100 ticks = 100%, an anchor every 10 ticks; occupies 40% width, and the labelled breakdown beside it lists cache hits / hit rate / total / share |
 | 📊 **Session stats** | Per session: name / turns / messages / tokens / cache hits / hit rate / share / model breakdown / last activity, **paginated beyond 10 rows**; **click any row** for that session's per-model usage and hit rate (also paginated beyond 10 models) |
 | 🔌 **Provider stats** | Aggregated by API provider: input / output / cache hits / hit rate / total / share / model breakdown; **click any row** for that provider's per-model usage and hit rate (also paginated beyond 10 models), **paginated beyond 10 rows** |

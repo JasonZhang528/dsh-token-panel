@@ -193,6 +193,15 @@ ok("弹窗支持 Esc 关闭", c.includes("Escape") && c.includes('window.addEven
 ok("会话逐模型四件套", c.includes("bm.cacheRead += m.cacheRead || 0"));
 ok("弹窗输出模型命中率", c.includes("fmtPct(hitRateOf(m))"));
 
+section("客户端：柱顶数值标签");
+ok("每根柱输出数值", c.includes('className: "ust-bar-val"') && c.includes('fmtLarge(v.total)'));
+ok("标签渲染进 svg", c.includes('grid, xAxis, bars, barLabels, peakMark,'));
+ok("密集时按步长稀疏", c.includes('const labelStride = Math.max(1, Math.ceil(BAR_LABEL_W / Math.max(1, effStep)));'));
+ok("峰值柱不重复标数值", c.includes('if (!(v.total > 0) || i === peakIdx) return null;'));
+ok("零用量柱不标数值", c.includes('!(v.total > 0)'));
+ok("标签样式已定义", c.includes('.ust-bar-val {') && c.includes('stroke: var(--surface); stroke-width: 2.5px;'));
+ok("峰值判定提前", c.indexOf('let peakIdx = 0, peakVal = -1;') < c.indexOf('const bars = values.map'));
+
 section("客户端：模型列表列名");
 ok("列表有列名表头", c.includes("ust-model--head") && c.includes('"aria-hidden": "true"'));
 ok("表头列名齐全", ["模型","缓存命中","命中率","总量","占比"].every((x) => c.includes('"' + x + '"')));
