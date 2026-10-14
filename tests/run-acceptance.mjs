@@ -106,10 +106,86 @@ const h = readFileSync(HOST, "utf8");
 section("宿主侧：供应商与会话维度聚合");
 ok("providerTotals 累计", h.includes("const providerTotals = new Map()"));
 ok("sessionList 累计", h.includes("const sessionList = []"));
-ok("account 记录供应商", h.includes("const account = (dayKey, hour, model, usage, provider)"));
+ok("account 记录供应商", h.includes("const account = (dayKey, hour, model, usage, provider, sessionId, time)"));
 ok("request/context 取 provider", h.includes('case "request/context":') && h.includes("currentProvider"));
 ok("buildCache 输出 providers", h.includes("const providers = [...(s.providerTotals || new Map())"));
 ok("buildCache 输出 sessions", h.includes("const sessions = [...(s.sessionList || [])"));
+
+section("宿主侧：按天聚合（日期范围过滤）");
+ok("按天记录消息数", h.includes("ensureDay(activeKey).messages += 1"));
+ok("按天记录会话桶", h.includes("day.bySession.get(sessionId)"));
+ok("按天记录供应商桶", h.includes("day.byProvider.get(provider)"));
+ok("按天累计轮次", h.includes("ensureSessDay(ensureDay(key), sid).turns += 1"));
+ok("按天输出会话明细", h.includes("const sessions = [...(d.bySession || new Map()).entries()]"));
+ok("按天输出供应商明细", h.includes("const providers = [...(d.byProvider || new Map()).entries()]"));
+ok("按天输出消息数", h.includes("messages: d.messages"));
+ok("会话名取自 session/title 事件", h.includes('case "session/title":') && h.includes("sessionTitle = ev.data.title.trim()"));
+ok("缓存带 schemaVersion", h.includes("const CACHE_SCHEMA_VERSION = 3") && h.includes("schemaVersion: CACHE_SCHEMA_VERSION"));
+ok("旧 schemaVersion 缓存不采用", h.includes("j.schemaVersion === CACHE_SCHEMA_VERSION"));
+
+section("客户端：日期范围过滤（Token用量统计以下）");
+ok("窗口会话指标", c.includes('label: "窗口会话"'));
+ok("窗口消息指标", c.includes('label: "窗口消息"'));
+ok("会话表按窗口聚合", c.includes("function sessionsIn(days, wnd, meta)"));
+ok("供应商表按窗口聚合", c.includes("function providersIn(days, wnd)"));
+ok("会话表接收 days/window", c.includes("element(SessionsView, { days: days, window: wnd"));
+ok("供应商表接收 days/window", c.includes("element(ProvidersView, { days: days, window: wnd"));
+ok("meta 按 id 建索引", c.includes("meta.reduce((m, s) => (s && s.id ? (m[s.id] = s, m) : m), {})"));
+ok("会话名为主、id 为副", c.includes("ust-tblId") && c.includes('className: "ust-tblSub ust-tblId"'));
+ok("会话统计副标题按窗口", c.includes('(wnd.id === "all" ? "全部历史" : wnd.label) + "会话的 Token 用量与会话内模型明细"'));
+ok("供应商副标题按窗口", c.includes('(wnd.id === "all" ? "全部历史" : wnd.label) + "按 API 提供商汇总，含各家模型明细"'));
+ok("热力图副标题重写", c.includes('"最近一年 · 活跃 " + model.activeDays + " 天"'));
+ok("热力图副标题含峰值日期", c.includes('fmtDayLabel(model.peak.key)'));
+ok("粘性栏底色为两层（不透底）", c.includes("background-color: var(--surface);") && c.includes("linear-gradient(var(--dsw-alias-bg-layer-2, transparent)"));
+const darkHeaderRule = /body\[data-ds-dark-theme\] \.ust-header \{[^}]*background-color: var\(--surface\)[^}]*linear-gradient\(var\(--dsw-alias-bg-layer-2, transparent\)/.test(c);
+ok("深色同样两层底色", darkHeaderRule);
+ok("内容区左右内边距 32px", c.includes("padding: 0 32px 24px;"));
+ok("标题栏左右内边距 32px", c.includes("padding: 16px 32px 10px;"));
+ok("粘性栏内边距 32px", c.includes("padding: 10px 32px;"));
+ok("窄屏内边距收敛", c.includes("@media (max-width: 900px)") && c.includes("padding-left: 16px; padding-right: 16px;"));
+
+section("客户端：日期栏贴合标题（上内边距归零）");
+ok("滚动容器上内边距为 0", c.includes(".ust-pageBody { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 32px 24px; }"));
+ok("间距改由 .ust-root 承担", c.includes("padding: 12px 0 0;"));
+ok("窄屏 .ust-root 同步收敛", c.includes(".ust-root { padding-top: 8px; }"));
+ok("弹窗主体同样上内边距归零", c.includes(".ust-panelBody{flex:1 1 auto;min-height:0;overflow:auto;padding:0 24px 20px}"));
+
+section("客户端：命中口径");
+ok("命中率按满量计算", c.includes("function hitRateOf(m)") && c.includes("(m.input || 0) + (m.output || 0) + (m.cacheRead || 0) + (m.cacheWrite || 0)"));
+ok("分母为 0 显示占位符", c.includes('return r === null || r === undefined ? "—"'));
+ok("汇总卡新增缓存命中", c.includes('label: "缓存命中"'));
+ok("汇总卡新增命中率", c.includes('label: "命中率"'));
+ok("窗口命中率按当期满量折算", c.includes("rate: winAgg.total > 0 ? winAgg.cacheRead / winAgg.total : null"));
+ok("会话表新增命中列", c.includes('element("th", { className: "ust-tblNum" }, "命中")'));
+ok("会话表新增命中率列", c.includes('element("th", { className: "ust-tblNum" }, "命中率")'));
+ok("会话行输出命中与命中率", c.includes("fmtLarge(r.cacheRead)") && c.includes("fmtPct(hitRateOf(r))"));
+ok("供应商表新增命中率列", /"供应商"[\s\S]{0,500}?"命中率"[\s\S]{0,300}?"总量"/.test(c));
+ok("会话窗口聚合累计四件套", c.includes("cur.cacheRead += s.cacheRead || 0;"));
+
+section("客户端：图表改版（柱状图，命中率折线已移除）");
+ok("用量分布改为柱状图", c.includes('"aria-label": "用量分布柱状图"') && c.includes('className: cF(s.rank) + " ust-bar"'));
+ok("原折线路径已移除", !c.includes('cS(s.rank) + " ust-hair"'));
+ok("命中率折线图已删除", !c.includes("ust-hr-line") && !c.includes('"aria-label": "各模型缓存命中率折线图"'));
+ok("命中率折线相关样式已清理", !c.includes(".ust-hr-line") && !c.includes(".ust-hr-dot") && !c.includes(".ust-legend-line"));
+ok("柱状图副标题", c.includes("一根柱 = 一个模型，柱高 = 当期用量"));
+ok("单图单滚动容器", c.includes('className: "ust-plot" + (needScroll ? " is-scroll" : "")'));
+
+section("客户端：模型明细色点可见性");
+ok("色点显式 inline-block", /.ust-dot {[^}]*display: inline-block/.test(c));
+ok("色点保留尺寸", /.ust-dot {[^}]*width: 8px; height: 8px/.test(c));
+ok("相邻色点留间距", c.includes(".ust-dot + .ust-dot { margin-left: 4px; }"));
+
+section("客户端：圆环模型列表带命中数据");
+ok("模型汇总保留四件套", c.includes("function modelTotalsIn(days, wnd)") && c.includes("cur.cacheRead += x.cacheRead || 0"));
+ok("其他桶合并四件套", c.includes("const sumMetrics = (rows) =>") && c.includes("...sumMetrics(tail)"));
+ok("列表显示命中量", c.includes('className: "ust-model-hit" }, "命中 " + fmtLarge(s.cacheRead)'));
+ok("列表显示命中率", c.includes('className: "ust-model-rate" }, fmtPct(hitRateOf(s))'));
+ok("圆环 tooltip 含命中率", c.includes('"命中 " + fmtFull(s.cacheRead || 0) + " · 命中率 " + fmtPct(hitRateOf(s))'));
+ok("命中数据有样式", c.includes(".ust-model-hit {") && c.includes(".ust-model-rate {"));
+
+section("客户端：热力图色阶去文字");
+ok("色阶不再显示「少/多」", !c.includes('"ust-scale-lab" }, "少"') && !c.includes('"ust-scale-lab" }, "多"'));
+ok("色阶方块保留", c.includes('className: "ust-gh-sw ust-gh-lv" + lv'));
 
 
 ok("注册 /api/usage-stats 路由", h.includes('path: "/api/usage-stats"'));

@@ -66,10 +66,13 @@ try {
   results["渲染出图表 SVG"] = page.svgs > 0;
   results["热力图为 GitHub 网格"] = page.cells >= 300;
   results["含会话与供应商两张表"] = page.tables === 2;
-  results["会话超过 10 条自动分页"] = page.pagers.some((x) => /会话/.test(x) && /第 1 \/ \d+ 页/.test(x));
+  // 会话表已按所选日期过滤，默认「今天」不足一页；切到「全部」再验分页
+  const allRange = JSON.parse(await ev("async () => {   const tabs = [...document.querySelectorAll('.ust-tabs .ust-tab')];   const all = tabs.find(x => x.textContent.trim() === '全部');   if (all) all.click();   await new Promise(r => setTimeout(r, 2500));   const pagers = [...document.querySelectorAll('.ust-pgInfo')].map(x => x.textContent);   const rows = document.querySelectorAll('.ust-tbl tbody tr').length;   const back = tabs.find(x => x.textContent.trim() === '今天');   if (back) back.click();   await new Promise(r => setTimeout(r, 2000));   return JSON.stringify({ pagers, rows, clicked: !!all, restored: !!back }); }"));
+  console.log("ALLRANGE " + JSON.stringify(allRange));
+  results["会话超过 10 条自动分页"] = allRange.pagers.some((x) => /会话/.test(x) && /第 1 \/ \d+ 页/.test(x));
   results["日期栏有不透明背景（滚动不透底）"] = /^rgb/.test(String(page.headerBg)) && page.headerBg !== "rgba(0, 0, 0, 0)";
   results["日期栏滚动冻结"] = page.headerPos === "sticky";
-  results["热力图统计移入子标题"] = page.subtitle.some((x) => /活跃热力图 :: .*共 \d+ 天/.test(x));
+  results["热力图统计移入子标题"] = page.subtitle.some((x) => /活跃热力图 :: .*最近一年.*活跃 \d+ 天/.test(x));
   results["子标题与标题同行"] = true;
   results["展示真实用量数据"] = typeof page.text === "string" && page.text.length > 10;
   // 本次改动：热力图单模式 / 单日指标 / 圆环横排
@@ -106,7 +109,8 @@ try {
   results["标题与副标题同行"] = neu.titleDir === "row";
   results["含会话统计表"] = Array.isArray(neu.h2) && neu.h2.includes("会话统计");
   results["含供应商统计表"] = Array.isArray(neu.h2) && neu.h2.includes("供应商用量统计");
-  results["会话统计分页生效"] = neu.pagerInfo.some((x) => /会话/.test(x) && /第 \d+ \/ \d+ 页/.test(x));
+  // 同上：分页控件只在「全部」这类超出单页的区间出现
+  results["会话统计分页生效"] = allRange.pagers.some((x) => /会话/.test(x) && /第 \d+ \/ \d+ 页/.test(x));
 
   // 区间标签
   const changes = JSON.parse(await ev("() => { const h2 = [...document.querySelectorAll('.ust-h2')].map(x => x.textContent.trim()); const active = [...document.querySelectorAll('.ust-tab.active')].map(x => x.textContent.trim()); return JSON.stringify({ headings: h2, activeTabs: active }); }"));

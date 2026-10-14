@@ -28,7 +28,8 @@
 	--q1: #9CBEE6; --q2: #5B8FD4; --q3: #2C6BC4; --q4: #123C74;
 
 	display: flex; flex-direction: column; gap: 32px;
-	padding: 0; color: var(--ink);
+	/* 顶部间距放在这里而不是 .ust-pageBody：滚动容器的上内边距会把 sticky 日期栏顶下去 */
+	padding: 12px 0 0; color: var(--ink);
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
 	font-size: 13px; line-height: 1.5;
 	font-variant-numeric: tabular-nums;
@@ -69,13 +70,21 @@ body[data-ds-dark-theme] .ust-root {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px 16px;
-  margin: 0 -24px 14px;
-  padding: 10px 24px;
-  /* 背景与弹窗保持一致，避免滚动时透出下层内容 */
-  background: var(--dsw-alias-bg-layer-2, #FFFFFF);
+  margin: 0 -32px 14px;
+  padding: 10px 32px;
+  /* 背景穿透：皮肤会把 bg-layer-2 换成半透明玻璃色，单用它会让滚动内容透出来。
+     故以不透明的 --surface 兜底，再把主题色作为顶层的半透明玻璃层叠上去：
+     有玻璃的宿主保持毛玻璃观感，无皮肤的宿主合成后与原来完全同色。 */
+  background-color: var(--surface);
+  background-image: linear-gradient(var(--dsw-alias-bg-layer-2, transparent), var(--dsw-alias-bg-layer-2, transparent));
   border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(0,0,0,.08));
 }
-body[data-ds-dark-theme] .ust-header { background: var(--dsw-alias-bg-layer-2, #24231F); border-bottom-color: rgba(255,255,255,.08); }
+/* 深色同理：不透明底 + 玻璃色叠层（顺序不可交换，否则背景又被单层半透明色覆盖） */
+body[data-ds-dark-theme] .ust-header {
+  background-color: var(--surface);
+  background-image: linear-gradient(var(--dsw-alias-bg-layer-2, transparent), var(--dsw-alias-bg-layer-2, transparent));
+  border-bottom-color: rgba(255,255,255,.08);
+}
 .ust-rangebox { position: relative; }
 .ust-tabs { display: flex; flex-wrap: wrap; gap: 2px 4px; }
 .ust-tab {
@@ -174,10 +183,16 @@ body[data-ds-dark-theme] .ust-tab.active { background: var(--ink); color: #19191
 .ust-model-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .ust-model-val { flex: none; font-size: 13px; font-weight: 650; color: var(--ink); }
 .ust-model-sub { flex: none; font-size: 12px; color: var(--muted); }
+/* 命中量 / 命中率：等宽数字右对齐，便于纵向比对 */
+.ust-model-hit { flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ust-model-rate { flex: none; min-width: 34px; text-align: right; font-size: 12px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
 .ust-model-row { display: flex; align-items: baseline; gap: 10px; }
 
 /* ── 图表下方的图例（可点击显隐） ───────────────────────── */
 .ust-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; }
+/* 图例置于图表之上时：贴着图表，且两行图例之间不留大缝 */
+.ust-legend--above { margin-top: 0; margin-bottom: 6px; }
+.ust-legend--above + .ust-legend--above { margin-top: -4px; }
 .ust-legend-item {
 	display: flex; align-items: center; gap: 7px;
 	font-size: 12px; font-weight: 550; line-height: 1.5; color: var(--muted);
@@ -185,6 +200,15 @@ body[data-ds-dark-theme] .ust-tab.active { background: var(--ink); color: #19191
 }
 .ust-legend-item:hover { color: var(--ink); }
 .ust-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+/* 命中率图例样本：短虚线（当前仅用量趋势图使用实心圆点，此处保留给后续图表扩展） */
+.ust-legend-dash { width: 15px; height: 0; border-top: 2px dashed var(--ink); flex: none; }
+
+/* 占位：柱体本身用类目色填充，不加描边避免相邻柱粘连 */
+.ust-bar { stroke: none; }
+
+/* 柱状图容器 */
+.ust-charts { display: flex; flex-direction: column; gap: 2px; width: 100%; }
+.ust-plot.is-scroll .ust-charts { width: max-content; }
 
 /* ── 环形图 ─────────────────────────────────────────────── */
 /* 圆环与模型明细各占一半；容器过窄时自动换行回上下堆叠 */
@@ -205,6 +229,49 @@ body[data-ds-dark-theme] .ust-tab.active { background: var(--ink); color: #19191
 	padding: 10px 14px; font-size: 12px; line-height: 1.5; color: var(--ink);
 	background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
 }
+
+/* ── 供应商明细弹窗 ─────────────────────────────────────── */
+/* 表格行可点击：给出明确的可点反馈 */
+.ust-tbl tbody tr.is-clickable { cursor: pointer; }
+.ust-tbl tbody tr.is-clickable:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.ust-dlgMask {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: var(--dsw-alias-bg-mask-2, rgba(0, 0, 0, .35));
+  backdrop-filter: blur(2px);
+  animation: ustFadeIn .18s ease both;
+}
+.ust-dlg {
+  display: flex; flex-direction: column;
+  width: min(720px, 100%); max-height: min(76vh, 640px);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  box-shadow: var(--dsw-shadow-lv3, 0 12px 40px rgba(0, 0, 0, .18));
+  overflow: hidden;
+}
+.ust-dlgHead {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  padding: 14px 18px 10px; border-bottom: 1px solid var(--rule);
+}
+.ust-dlgTitleBox { flex: 1 1 auto; min-width: 0; }
+.ust-dlgTitle { margin: 0; font-size: 14px; font-weight: 650; color: var(--ink); }
+.ust-dlgSub { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+.ust-dlgClose {
+  flex: none; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted); background: transparent; border: 0; border-radius: 6px; cursor: pointer;
+}
+.ust-dlgClose:hover { color: var(--ink); background: var(--hover); }
+.ust-dlgClose svg { width: 15px; height: 15px; }
+.ust-dlgBody { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 18px 16px; }
+.ust-dlgSum {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px 18px; padding: 12px 0 4px;
+}
+.ust-dlgSumItem { min-width: 0; }
+.ust-dlgSumLab { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.ust-dlgSumVal { margin-top: 3px; font-size: 17px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
 
 /* ── 底部：页脚 + 按钮 ─────────────────────────────────── */
 .ust-footer {
@@ -332,8 +399,16 @@ body[data-ds-dark-theme] .ust-tbl th, body[data-ds-dark-theme] .ust-tbl td { bor
 .ust-tbl th { color: var(--muted, #5F5E59); font-weight: 600; font-size: 12px; }
 .ust-tbl tbody tr:hover { background: var(--hover, #EDECE7); }
 .ust-tblNum { text-align: right; font-variant-numeric: tabular-nums; }
-.ust-tblName { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.ust-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.ust-tblName { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+/* 会话名称：名称为主、id 为副，仍保持单行省略 */
+.ust-tblName .ust-tblId { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted, #5F5E59); }
+/* 模型明细色点：必须显式 inline-block，否则行内元素的 width/height 被忽略、点不可见 */
+.ust-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  flex: none; vertical-align: middle;
+}
+/* 单元格不是 flex 容器，用相邻外边距代替 gap */
+.ust-dot + .ust-dot { margin-left: 4px; }
 .ust-tblSub { color: var(--muted, #5F5E59); font-size: 12px; font-weight: 400; }
 .ust-ellip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
 
@@ -353,9 +428,18 @@ body[data-ds-dark-theme] .ust-pgBtn.is-active { background: #EDECE7; color: #1A1
 .ust-panelGlyph { display: inline-flex; align-items: center; justify-content: center; }
 .ust-panelGlyph svg { width: 100%; height: 100%; }
 .ust-page { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.ust-pageHead { flex: none; padding: 16px 24px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(0,0,0,.08)); }
+.ust-pageHead { flex: none; padding: 16px 32px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(0,0,0,.08)); }
 .ust-pageTitle { margin: 0; font-size: 16px; font-weight: 600; color: var(--dsw-alias-label-primary, #191918); }
 .ust-pageSub { margin: 2px 0 0; font-size: 12px; color: var(--dsw-alias-label-tertiary, #86857F); }
-.ust-pageBody { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 12px 24px 24px; }
+/* 上内边距必须为 0：sticky 的 .ust-header 会被滚动容器的上内边距顶住，
+   「下滑固定」后与上方标题之间会留着一道透出内容的缝。间距改由 .ust-root 的 padding-top 承担。 */
+.ust-pageBody { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 32px 24px; }
+/* 窄屏：横向留白收敛到 16px，避免内容被过度挤压 */
+@media (max-width: 900px) {
+  .ust-pageHead { padding-left: 16px; padding-right: 16px; }
+  .ust-pageBody { padding-left: 16px; padding-right: 16px; }
+  .ust-root { padding-top: 8px; }
+  .ust-header { margin-left: -16px; margin-right: -16px; padding-left: 16px; padding-right: 16px; }
+}
 body[data-ds-dark-theme] .ust-pageHead { border-bottom-color: rgba(255,255,255,.08); }
 body[data-ds-dark-theme] .ust-pageTitle { color: #EDECE7; }

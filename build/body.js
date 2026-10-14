@@ -180,7 +180,7 @@ window.__ModuleLoader__.load({
 .ust-closeBtn{flex:none;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;color:var(--dsw-alias-label-tertiary,#86857F);background:transparent;border:0;border-radius:8px;cursor:pointer;transition:color .15s ease,background-color .15s ease}
 .ust-closeBtn:hover{color:var(--dsw-alias-label-primary,#191918);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}
 .ust-closeBtn svg{width:16px;height:16px}
-.ust-panelBody{flex:1 1 auto;min-height:0;overflow:auto;padding:12px 24px 20px}
+.ust-panelBody{flex:1 1 auto;min-height:0;overflow:auto;padding:0 24px 20px}
 /* 弹窗已有标题，隐藏视图内重复的 h1 */
 .ust-panelBody .ust-page-title{display:none}
 `;
@@ -196,6 +196,14 @@ window.__ModuleLoader__.load({
 			return { total, turns, activeDays };
 		}
 		// 尾部模型并入「其他」：颜色才能落在阶梯上，且图例不爆
+		// 四件套求和：命中率需要分母（输入+输出+缓存读写），只合并 total 会算错
+		const sumMetrics = (rows) => rows.reduce((a, m) => ({
+			input: a.input + (m.input || 0),
+			output: a.output + (m.output || 0),
+			cacheRead: a.cacheRead + (m.cacheRead || 0),
+			cacheWrite: a.cacheWrite + (m.cacheWrite || 0),
+			total: a.total + (m.total || 0),
+		}), { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 });
 		function foldModels(list, n = 4) {
 			const sorted = [...list].sort((a, b) => b.total - a.total);
 			if (sorted.length <= n + 1) return sorted.map((m, i) => ({ ...m, rank: i }));
@@ -203,16 +211,104 @@ window.__ModuleLoader__.load({
 			const tail = sorted.slice(n);
 			head.push({
 				model: "其他 " + tail.length + " 个模型",
-				total: tail.reduce((s, m) => s + m.total, 0),
+				...sumMetrics(tail),
 				children: tail,
 				rank: n,
 			});
 			return head;
 		}
+		// 按模型汇总完整四件套：圆环右侧列表要显示缓存命中量与命中率
 		function modelTotalsIn(days, wnd) {
 			const m = new Map();
-			fillDays(days, wnd).forEach((d) => (d.byModel || []).forEach((x) => m.set(x.model, (m.get(x.model) || 0) + x.total)));
-			return [...m.entries()].map(([model, total]) => ({ model, total }));
+			fillDays(days, wnd).forEach((d) => (d.byModel || []).forEach((x) => {
+				const cur = m.get(x.model) || { model: x.model, color: x.color, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+				cur.input += x.input || 0; cur.output += x.output || 0;
+				cur.cacheRead += x.cacheRead || 0; cur.cacheWrite += x.cacheWrite || 0;
+				cur.total += x.total || 0;
+				if (!cur.color && x.color) cur.color = x.color;
+				m.set(x.model, cur);
+			}));
+			return [...m.values()];
+		}
+		// 缓存命中率：命中量 / 当期满量（含输入、输出、缓存读写）。分母为 0 时返回 null，
+		// 由 fmtPct 显示「—」，避免误导性的 0%
+		function hitRateOf(m) {
+			if (!m) return null;
+			const total = (m.input || 0) + (m.output || 0) + (m.cacheRead || 0) + (m.cacheWrite || 0);
+			if (total <= 0) return null;
+			return (m.cacheRead || 0) / total;
+		}
+		function fmtPct(r) {
+			return r === null || r === undefined ? "—" : Math.round(r * 100) + "%";
+		}
+		// 模型取色：优先沿用宿主给的颜色；缺失时按名称散列到类目色，
+		// 保证弹窗里的模型色块与柱状图 / 圆环一致
+		function modelColorOf(model) {
+			let h = 0;
+			const s = String(model || "");
+			for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+			return "var(--c" + (h % CATN) + ")";
+		}
+		// 按窗口聚合「会话」维度：把窗口内各天的会话桶合并成一个会一行（无记录的日补 0）
+		function sessionsIn(days, wnd, meta) {
+			const acc = new Map();
+			(days || []).forEach((d) => {
+				if (!((wnd.dateKeys || []).includes(d.date))) return;
+				(d.sessions || []).forEach((s) => {
+					const cur = acc.get(s.id) || { id: s.id, total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0, messages: 0, lastTime: null, byModel: {} };
+					cur.total += s.total || 0;
+					cur.input += s.input || 0;
+					cur.output += s.output || 0;
+					cur.cacheRead += s.cacheRead || 0;
+					cur.cacheWrite += s.cacheWrite || 0;
+					cur.turns += s.turns || 0;
+					cur.messages += s.messages || 0;
+					if (s.lastTime && (!cur.lastTime || s.lastTime > cur.lastTime)) cur.lastTime = s.lastTime;
+					(s.byModel || []).forEach((m) => {
+						const bm = cur.byModel[m.model] || { model: m.model, color: m.color, total: 0 };
+						bm.total += m.total || 0;
+						if (!bm.color && m.color) bm.color = m.color;
+						cur.byModel[m.model] = bm;
+					});
+					acc.set(s.id, cur);
+				});
+			});
+			return [...acc.values()]
+				.map((s) => ({
+					...s,
+					title: (meta && (meta[s.id] || {}).title) || null,
+					cwd: (meta && (meta[s.id] || {}).cwd) || null,
+					byModel: Object.values(s.byModel).sort((a, b) => b.total - a.total),
+				}))
+				.sort((a, b) => b.total - a.total);
+		}
+		// 按窗口聚合「供应商」维度：合并窗口内各天的供应商桶，占比按窗口总量重算
+		function providersIn(days, wnd) {
+			const acc = new Map();
+			// 逐模型的完整四件套：弹窗要按模型给命中率，只留 total 不够
+			const bump = (box, m) => {
+				const cur = box[m.model] || { model: m.model, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+				cur.input += m.input || 0; cur.output += m.output || 0;
+				cur.cacheRead += m.cacheRead || 0; cur.cacheWrite += m.cacheWrite || 0;
+				cur.total += m.total || 0;
+				box[m.model] = cur;
+			};
+			fillDays(days, wnd).forEach((d) => {
+				(d.providers || []).forEach((p) => {
+					const cur = acc.get(p.provider) || { provider: p.provider, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, byModel: {} };
+					cur.input += p.input || 0; cur.output += p.output || 0;
+					cur.cacheRead += p.cacheRead || 0; cur.cacheWrite += p.cacheWrite || 0;
+					cur.total += p.total || 0;
+					(p.byModel || []).forEach((m) => bump(cur.byModel, m));
+					acc.set(p.provider, cur);
+				});
+			});
+			const list = [...acc.values()].map((p) => ({
+				...p,
+				// 宿主已带 color：沿用它与圆环 / 柱状图同色，缺失时才按名称兜底
+				byModel: Object.values(p.byModel).map((m) => ({ ...m, color: m.color || modelColorOf(m.model) })).sort((a, b) => b.total - a.total),
+			}));
+			return list.sort((a, b) => b.total - a.total);
 		}
 
 		// ---------- 指标 ----------
@@ -337,11 +433,16 @@ window.__ModuleLoader__.load({
 				element("div", { className: "ust-block-head" },
 					element("div", { className: "ust-block-titleRow" },
 						element("h2", { className: "ust-h2" }, "活跃热力图"),
-						element("div", { className: "ust-sub" }, "一块 = 一天，颜色越深 = 当日 Token 越多 · 共 " + model.cells.length + " 天 · 有用量 " + model.activeDays + " 天 · 峰值 " + (model.peak && model.peak.total > 0 ? fmtLarge(model.peak.total) : "—")),
+						element("div", { className: "ust-sub" },
+							// 口径改为「最近一年 / 窗口内」两项：总天数无信息量，活跃与峰值才有行动价值
+							(wnd && wnd.id !== "all" ? wnd.label + " · " : "") + "最近一年 · 活跃 " + model.activeDays + " 天",
+							model.peak && model.peak.total > 0
+								? element("span", null, " · 峰值 " + fmtLarge(model.peak.total) + "（" + fmtDayLabel(model.peak.key) + "）")
+								: null,
+						),
+						// 只留色阶方块：颜色深浅的含义已由副标题说明，再挂「少/多」是冗余
 						element("div", { className: "ust-gh-scale" },
-							element("span", { className: "ust-scale-lab" }, "少"),
 							[0, 1, 2, 3, 4].map((lv) => element("span", { key: lv, className: "ust-gh-sw ust-gh-lv" + lv })),
-							element("span", { className: "ust-scale-lab" }, "多"),
 						),
 					),
 				),
@@ -387,8 +488,12 @@ window.__ModuleLoader__.load({
 			);
 		}
 		// ---------- 会话统计 / 会话模型明细 ----------
-		function SessionsView({ sessions }) {
-			const rows = sessions || [];
+		function SessionsView({ days, window: wnd, meta }) {
+			const rows = react.useMemo(() => {
+				// meta 是宿主返回的全历史会话数组，按 id 建索引后才能补标题
+				const idx = Array.isArray(meta) ? meta.reduce((m, s) => (s && s.id ? (m[s.id] = s, m) : m), {}) : (meta || {});
+				return sessionsIn(days, wnd, idx);
+			}, [days, wnd, meta]);
 			const [page, setPage] = react.useState(0);
 			const PAGE_SIZE = 10;
 			const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
@@ -409,7 +514,7 @@ window.__ModuleLoader__.load({
 				element("div", { className: "ust-block-head" },
 					element("div", { className: "ust-block-titleRow" },
 						element("h2", { className: "ust-h2" }, "会话统计"),
-						element("div", { className: "ust-sub" }, "全部历史会话的 Token 用量与会话内模型明细"),
+						element("div", { className: "ust-sub" }, (wnd.id === "all" ? "全部历史" : wnd.label) + "会话的 Token 用量与会话内模型明细"),
 					),
 					element("div", { className: "ust-sub" }, rows.length + " 个会话"),
 				),
@@ -420,6 +525,8 @@ window.__ModuleLoader__.load({
 							element("th", { className: "ust-tblNum" }, "轮次"),
 							element("th", { className: "ust-tblNum" }, "消息"),
 							element("th", { className: "ust-tblNum" }, "Token"),
+							element("th", { className: "ust-tblNum" }, "命中"),
+							element("th", { className: "ust-tblNum" }, "命中率"),
 							element("th", { className: "ust-tblNum" }, "占比"),
 							element("th", null, "模型明细"),
 							element("th", null, "最近活动"),
@@ -427,10 +534,14 @@ window.__ModuleLoader__.load({
 					element("tbody", null,
 						pageRows.map((r) => element("tr", { key: r.id },
 							element("td", null, element("div", { className: "ust-tblName" },
-								element("span", { className: "ust-ellip", title: r.title || r.id }, r.title || r.id))),
+								element("span", { className: "ust-ellip", title: r.title || r.id }, r.title || r.id),
+								// 有名称为主、id 为副：同名会话仍可分辨
+								r.title ? element("span", { className: "ust-tblSub ust-tblId", title: r.id }, r.id) : null)),
 							element("td", { className: "ust-tblNum" }, String(r.turns || 0)),
 							element("td", { className: "ust-tblNum" }, String(r.messages || 0)),
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.total)),
+							element("td", { className: "ust-tblNum" }, fmtLarge(r.cacheRead)),
+							element("td", { className: "ust-tblNum" }, fmtPct(hitRateOf(r))),
 							element("td", { className: "ust-tblNum" }, (grand > 0 ? Math.round((r.total / grand) * 100) : 0) + "%"),
 							element("td", null, (r.byModel || []).slice(0, 4).map((m, i) =>
 								element("span", { key: i, className: "ust-dot", title: m.model + "：" + fmtLarge(m.total), style: { background: m.color || "var(--ink)" } }))),
@@ -442,9 +553,73 @@ window.__ModuleLoader__.load({
 				rows.length > PAGE_SIZE ? element(Pager, { page: safePage, pageCount, total: rows.length, unit: "会话", onChange: setPage }) : null,
 		);
 		}
+		// ---------- 供应商明细弹窗 ----------
+		// 点供应商一行后展开：逐个模型的用量与命中率
+		function ProviderDetailModal({ row, wnd, onClose }) {
+			react.useEffect(() => {
+				const onKey = (e) => { if (e.key === "Escape") onClose(); };
+				window.addEventListener("keydown", onKey);
+				return () => window.removeEventListener("keydown", onKey);
+			}, [onClose]);
+			const models = (row && row.byModel) || [];
+			const sum = models.reduce((a, m) => a + (m.total || 0), 0);
+			return element("div", { className: "ust-dlgMask", onClick: onClose },
+				element("div", {
+					className: "ust-dlg", role: "dialog", "aria-modal": "true",
+					"aria-label": "供应商模型明细", onClick: (e) => e.stopPropagation(),
+				},
+					element("div", { className: "ust-dlgHead" },
+						element("div", { className: "ust-dlgTitleBox" },
+							element("h3", { className: "ust-dlgTitle" }, row.provider),
+							element("p", { className: "ust-dlgSub" },
+								(wnd && wnd.id !== "all" ? wnd.label + " · " : "") + models.length + " 个模型"),
+						),
+						element("button", { type: "button", className: "ust-dlgClose", "aria-label": "关闭", title: "关闭", onClick: onClose }, element(IconClose)),
+					),
+					element("div", { className: "ust-dlgBody" },
+						element("div", { className: "ust-dlgSum" },
+							element("div", { className: "ust-dlgSumItem" },
+								element("div", { className: "ust-dlgSumLab" }, "总量"),
+								element("div", { className: "ust-dlgSumVal" }, fmtLarge(row.total))),
+							element("div", { className: "ust-dlgSumItem" },
+								element("div", { className: "ust-dlgSumLab" }, "缓存命中"),
+								element("div", { className: "ust-dlgSumVal" }, fmtLarge(row.cacheRead))),
+							element("div", { className: "ust-dlgSumItem" },
+								element("div", { className: "ust-dlgSumLab" }, "命中率"),
+								element("div", { className: "ust-dlgSumVal" }, fmtPct(hitRateOf(row)))),
+						),
+						element("div", { className: "ust-tblWrap" },
+							element("table", { className: "ust-tbl" },
+								element("thead", null, element("tr", null,
+									element("th", null, "模型"),
+									element("th", { className: "ust-tblNum" }, "输入"),
+									element("th", { className: "ust-tblNum" }, "输出"),
+									element("th", { className: "ust-tblNum" }, "缓存命中"),
+									element("th", { className: "ust-tblNum" }, "命中率"),
+									element("th", { className: "ust-tblNum" }, "总量"),
+									element("th", { className: "ust-tblNum" }, "占比"),
+								)),
+								element("tbody", null, models.map((m) => element("tr", { key: m.model },
+									element("td", null, element("div", { className: "ust-tblName" },
+										element("span", { className: "ust-dot", style: { background: m.color || "var(--ink)" } }),
+										element("span", { className: "ust-ellip", title: m.model }, m.model))),
+									element("td", { className: "ust-tblNum" }, fmtLarge(m.input)),
+									element("td", { className: "ust-tblNum" }, fmtLarge(m.output)),
+									element("td", { className: "ust-tblNum" }, fmtLarge(m.cacheRead)),
+									element("td", { className: "ust-tblNum" }, fmtPct(hitRateOf(m))),
+									element("td", { className: "ust-tblNum" }, fmtLarge(m.total)),
+									element("td", { className: "ust-tblNum" }, (sum > 0 ? Math.round((m.total / sum) * 100) : 0) + "%"),
+								))),
+							),
+						),
+					),
+				),
+			);
+		}
 		// ---------- 供应商用量统计 ----------
-		function ProvidersView({ providers }) {
-			const rows = providers || [];
+		function ProvidersView({ days, window: wnd }) {
+			const rows = react.useMemo(() => providersIn(days, wnd), [days, wnd]);
+			const [detail, setDetail] = react.useState(null);
 			const [page, setPage] = react.useState(0);
 			const PAGE_SIZE = 10;
 			const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
@@ -456,7 +631,7 @@ window.__ModuleLoader__.load({
 				element("div", { className: "ust-block-head" },
 					element("div", { className: "ust-block-titleRow" },
 						element("h2", { className: "ust-h2" }, "供应商用量统计"),
-						element("div", { className: "ust-sub" }, "按 API 提供商汇总，含各家模型明细"),
+						element("div", { className: "ust-sub" }, (wnd.id === "all" ? "全部历史" : wnd.label) + "按 API 提供商汇总，含各家模型明细"),
 					),
 					element("div", { className: "ust-sub" }, rows.length + " 个供应商"),
 				),
@@ -467,18 +642,29 @@ window.__ModuleLoader__.load({
 							element("th", { className: "ust-tblNum" }, "输入"),
 							element("th", { className: "ust-tblNum" }, "输出"),
 							element("th", { className: "ust-tblNum" }, "缓存命中"),
+							element("th", { className: "ust-tblNum" }, "命中率"),
 							element("th", { className: "ust-tblNum" }, "总量"),
 							element("th", { className: "ust-tblNum" }, "占比"),
 							element("th", null, "模型明细"),
 						)),
 					element("tbody", null,
-						pageRows.map((r) => element("tr", { key: r.provider },
+						pageRows.map((r) => element("tr", {
+							key: r.provider,
+							className: "is-clickable",
+							tabIndex: 0,
+							role: "button",
+							"aria-label": r.provider + " 模型明细",
+							title: "点击查看该供应商的模型明细",
+							onClick: () => setDetail(r),
+							onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetail(r); } },
+						},
 							element("td", null, element("div", { className: "ust-tblName" },
 								element("span", { className: "ust-dot", style: { background: r.color || "var(--ink)" } }),
 								element("span", { className: "ust-ellip", title: r.provider }, r.provider))),
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.input)),
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.output)),
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.cacheRead)),
+							element("td", { className: "ust-tblNum" }, fmtPct(hitRateOf(r))),
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.total)),
 							element("td", { className: "ust-tblNum" }, (grand > 0 ? Math.round((r.total / grand) * 100) : 0) + "%"),
 							element("td", null, (r.byModel || []).slice(0, 4).map((m, i) =>
@@ -488,6 +674,7 @@ window.__ModuleLoader__.load({
 				),
 			),
 				rows.length > PAGE_SIZE ? element(Pager, { page: safePage, pageCount, total: rows.length, unit: "供应商", onChange: setPage }) : null,
+				detail ? element(ProviderDetailModal, { row: detail, wnd, onClose: () => setDetail(null) }) : null,
 		);
 		}
 		function Trend({ days, window: wnd }) {
@@ -507,14 +694,15 @@ window.__ModuleLoader__.load({
 				: dayList;
 			const xLabel = (d) => (isHour ? String(d.hour).padStart(2, "0") + ":00" : fmtDayLabel(d.date));
 
-			// 窄面板里线太多会糊成一团：按宽度决定显示几条
+			// 窄面板里柱子太多会糊成一团：按宽度决定显示几条
 			const series = react.useMemo(() => foldModels(modelTotalsIn(days, wnd), (boxW || 400) < 520 ? 4 : 5), [days, wnd, boxW]);
+			// 把一个 fold 出来的段（可能是「其他 N 个模型」）在当期的 byModel 里还原成用量
+			const segTotalOf = (by, s) => (s.children
+				? s.children.reduce((acc, c) => acc + (((by.find((x) => x.model === c.model) || {}).total) || 0), 0)
+				: (((by.find((x) => x.model === s.model) || {}).total) || 0));
 			const values = react.useMemo(() => xData.map((d) => {
 				const by = d.byModel || [];
-				const vals = series.map((s) => {
-					if (s.children) return s.children.reduce((acc, c) => acc + ((by.find((x) => x.model === c.model) || {}).total || 0), 0);
-					return (by.find((x) => x.model === s.model) || {}).total || 0;
-				});
+				const vals = series.map((s) => segTotalOf(by, s));
 				return { total: vals.reduce((a, b) => a + b, 0), vals };
 			}), [xData, series]);
 
@@ -527,10 +715,10 @@ window.__ModuleLoader__.load({
 			const narrow = (boxW || 400) < 380;
 			const PAD_L = narrow ? 30 : 40, PAD_R = narrow ? 6 : 10, PAD_T = 20, PAD_B = 34;
 			const avail = Math.max(120, boxW - PAD_L - PAD_R);
-			const step = N > 1 ? avail / (N - 1) : 0;
-			// 单点太挤时横向滚动，保证点间距不小于 9px
+			const step = N > 1 ? avail / (N - 1) : avail;
+			// 单点太挤时横向滚动，保证柱间距不小于 9px
 			const minStep = isHour ? 14 : (narrow ? 7.5 : 9);
-			const needScroll = step > 0 && step < minStep;
+			const needScroll = N > 1 && step < minStep;
 			let plotW = needScroll ? (N - 1) * minStep : avail;
 			// 不滚动时必须严丝合缝落在容器内（避免 1–2px 溢出触发横向滚动条）
 			if (!needScroll) plotW = Math.max(80, Math.min(plotW, (boxW || 400) - PAD_L - PAD_R));
@@ -538,10 +726,12 @@ window.__ModuleLoader__.load({
 			const H = (boxW || 400) < 520 ? 168 : 200;
 			const baseY = H - PAD_B;
 			const topY = PAD_T;
-			const x = (i) => PAD_L + (needScroll ? i * minStep : i * (plotW / Math.max(1, N - 1)));
+			const bandW = N > 1 ? (needScroll ? minStep : plotW / (N - 1)) : avail;
+			const barW = Math.max(3, Math.min(bandW * 0.62, 30));
+			const xc = (i) => (N > 1 ? PAD_L + i * (needScroll ? minStep : plotW / (N - 1)) : PAD_L + plotW / 2);
 			const y = (v) => baseY - (v / peakTotal) * (baseY - topY);
 
-			// Y 轴：0 与峰值两档刻度，避免密集小字
+			// 柱状图 Y 轴：0 与峰值两档刻度，避免密集小字
 			const grid = [
 				element("line", { key: "g0", className: "ust-grid", x1: PAD_L, y1: topY, x2: PAD_L + plotW, y2: topY }),
 				element("line", { key: "g1", className: "ust-baseline", x1: PAD_L, y1: baseY, x2: PAD_L + plotW, y2: baseY }),
@@ -557,44 +747,39 @@ window.__ModuleLoader__.load({
 				return [...set].sort((a, b) => a - b);
 			})();
 			const xAxis = labelIdx.map((i) => element("text", {
-				key: "x" + i, className: "ust-axis", x: x(i), y: baseY + 20, textAnchor: i === 0 ? "start" : i === N - 1 ? "end" : "middle",
+				key: "x" + i, className: "ust-axis", x: xc(i), y: baseY + 20, textAnchor: i === 0 ? "start" : i === N - 1 ? "end" : "middle",
 			}, xLabel(xData[i])));
 
-			// 峰值点
-			let peakIdx = 0, peakVal = -1;
-			visTotals.forEach((v, i) => { if (v > peakVal) { peakVal = v; peakIdx = i; } });
-
-			const lines = series.map((s, k) => {
-				if (!visible[k]) return null;
-				const pts = values.map((v, i) => x(i) + " " + y(v.vals[k]));
-				const dotR = (boxW || 400) < 520 ? 3 : 2.6;
-				const dots = values.map((v, i) => (v.vals[k] > 0
-					? element("circle", { key: "d" + i, className: cF(s.rank) + " ust-dot", cx: x(i), cy: y(v.vals[k]), r: dotR })
-					: null));
-				return element("g", { key: s.model },
-					element("path", { className: cS(s.rank) + " ust-hair", d: "M" + pts.join(" L ") }),
-					dots,
-				);
+			// 堆叠柱：一根柱 = 一格，段序与图例一致
+			const bars = values.map((v, i) => {
+				let acc = 0;
+				const segs = series.map((s, k) => {
+					if (!visible[k] || !(v.vals[k] > 0)) return null;
+					const y0 = y(acc), y1 = y(acc + v.vals[k]);
+					acc += v.vals[k];
+					return element("rect", {
+						key: "s" + k, className: cF(s.rank) + " ust-bar",
+						x: xc(i) - barW / 2, y: y1, width: barW, height: Math.max(1, y0 - y1),
+					});
+				});
+				return element("g", { key: "b" + i }, segs,
+					element("rect", { className: "ust-hitband", x: xc(i) - bandW / 2, y: topY, width: bandW, height: baseY - topY }));
 			});
 
-			// 峰值标注：优先放点下方（避开顶部 Y 轴刻度），贴底则放上方
-			const peakMark = peakVal > 0 ? (() => {
-				const py = y(peakVal);
-				const below = py + 20 <= baseY - 2;
-				return element("g", null,
-					element("circle", { className: "ust-peak-ring", cx: x(peakIdx), cy: py, r: 6 }),
-					element("text", {
-						className: "ust-callout", x: x(peakIdx), y: below ? py + 20 : py - 11,
-						textAnchor: peakIdx === 0 ? "start" : peakIdx === N - 1 ? "end" : "middle",
-					}, fmtLarge(peakVal)),
-				);
-			})() : null;
+			// 峰值标注：标在柱顶上方
+			let peakIdx = 0, peakVal = -1;
+			visTotals.forEach((v, i) => { if (v > peakVal) { peakVal = v; peakIdx = i; } });
+			const peakMark = peakVal > 0 ? element("text", {
+				className: "ust-callout", x: xc(peakIdx), y: Math.max(topY + 10, y(peakVal) - 7),
+				textAnchor: peakIdx === 0 ? "start" : peakIdx === N - 1 ? "end" : "middle",
+			}, fmtLarge(peakVal)) : null;
 
 			const onMove = (e) => {
 				if (!boxW) return;
 				const rect = e.currentTarget.getBoundingClientRect();
-				const sc = scrollRef.current ? scrollRef.current.scrollLeft : 0;
-				const local = e.clientX - rect.left + sc;
+				// 取所在滚动容器的位移，横向滚动后仍算得准
+				const holder = e.currentTarget.closest(".ust-plot");
+				const local = e.clientX - rect.left + (holder ? holder.scrollLeft : 0);
 				const i = needScroll
 					? Math.max(0, Math.min(N - 1, Math.round((local - PAD_L) / minStep)))
 					: Math.max(0, Math.min(N - 1, Math.round(((local - PAD_L) / plotW) * (N - 1))));
@@ -617,20 +802,12 @@ window.__ModuleLoader__.load({
 				element("div", { className: "ust-block-head" },
 					element("div", { className: "ust-block-titleRow" },
 						element("h2", { className: "ust-h2" }, isHour ? "按小时的用量分布" : "用量趋势"),
-						element("div", { className: "ust-sub" }, "一条线 = 一个模型，圆点 = 当期用量，颜色 = 模型"),
+						element("div", { className: "ust-sub" }, "一根柱 = 一个模型，柱高 = 当期用量"),
 					),
 					element("div", { className: "ust-sub" }, wnd.label),
 				),
-				element("div", { ref: boxRef },
-					element("div", { className: "ust-plot" + (needScroll ? " is-scroll" : ""), ref: scrollRef },
-						boxW > 0 ? element("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "用量趋势折线图" },
-							grid, xAxis, lines, peakMark,
-							hover !== null && element("line", { className: "ust-cursor", x1: x(hover), y1: topY, x2: x(hover), y2: baseY }),
-							element("rect", { className: "ust-hit", x: 0, y: 0, width: W, height: H, onMouseMove: onMove, onMouseLeave: () => { setHover(null); clearTip(); } }),
-						) : null,
-					),
-				),
-				element("div", { className: "ust-legend" },
+				// 图例置于图表上方
+				element("div", { className: "ust-legend ust-legend--above" },
 					series.map((s) => element("span", {
 						key: s.model,
 						className: "ust-legend-item",
@@ -641,6 +818,15 @@ window.__ModuleLoader__.load({
 						element("span", { className: "ust-legend-dot " + cB(s.rank) }),
 						element("span", null, s.model),
 					)),
+				),
+				element("div", { ref: boxRef },
+					element("div", { className: "ust-plot" + (needScroll ? " is-scroll" : ""), ref: scrollRef },
+						boxW > 0 ? element("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "用量分布柱状图" },
+							grid, xAxis, bars, peakMark,
+							hover !== null && element("line", { className: "ust-cursor", x1: xc(hover), y1: topY, x2: xc(hover), y2: baseY }),
+							element("rect", { className: "ust-hit", x: 0, y: 0, width: W, height: H, onMouseMove: onMove, onMouseLeave: () => { setHover(null); clearTip(); } }),
+						) : null,
+					),
 				),
 				tipEl,
 			);
@@ -709,6 +895,7 @@ window.__ModuleLoader__.load({
 					const tip = element("div", null,
 						element("div", { className: "ust-tip-title" }, s.model),
 						element("div", { className: "ust-tip-body" }, fmtFull(s.total) + " tokens · " + (sum > 0 ? (s.total / sum * 100).toFixed(1) : "0") + "%"),
+						element("div", { className: "ust-tip-body" }, "命中 " + fmtFull(s.cacheRead || 0) + " · 命中率 " + fmtPct(hitRateOf(s))),
 						s.children ? element("div", { className: "ust-tip-body" }, "含 " + s.children.map((c) => c.model).join("、")) : null,
 					);
 					const show = (e) => { setActive(s.model); placeTip(e, tip); };
@@ -751,6 +938,9 @@ window.__ModuleLoader__.load({
 									element("span", { className: "ust-model-dot " + cB(s.rank) }),
 									element("span", { title: s.children ? s.children.map((c) => c.model).join("、") : s.model }, s.model)),
 								element("span", { className: "ust-model-row" },
+									// 命中量与命中率：命中率沿用全局口径（缓存命中 / 当期满量）
+									element("span", { className: "ust-model-hit" }, "命中 " + fmtLarge(s.cacheRead)),
+									element("span", { className: "ust-model-rate" }, fmtPct(hitRateOf(s))),
 									element("span", { className: "ust-model-sub" }, fmtLarge(s.total)),
 									element("span", { className: "ust-model-val" }, (sum > 0 ? Math.round((s.total / sum) * 100) : 0) + "%")),
 							)),
@@ -830,6 +1020,24 @@ window.__ModuleLoader__.load({
 				? "占本窗口 " + Math.round((winTop.total / stats.total) * 100) + "%"
 				: "";
 			const avgPerActive = stats.activeDays > 0 ? stats.total / stats.activeDays : 0;
+			// 窗口内会话数与消息数：会话按「天」去重（跨天会话只计一次），消息按天累加
+			const winAgg = fillDays(days, wnd).reduce((acc, d) => {
+				acc.messages += d.messages || 0;
+				acc.total += d.total || 0;
+				(d.byModel || []).forEach((m) => { acc.cacheRead += m.cacheRead || 0; });
+				(d.sessions || []).forEach((s) => acc.ids.add(s.id));
+				return acc;
+			}, { messages: 0, total: 0, cacheRead: 0, ids: new Set() });
+			const winStats = {
+				sessions: winAgg.ids.size,
+				messages: winAgg.messages,
+				cacheRead: winAgg.cacheRead,
+				rate: winAgg.total > 0 ? winAgg.cacheRead / winAgg.total : null,
+			};
+			// 窗口显示名：全部区间不显示（此时指标本身就是全历史口径）
+			const winName = wnd.id === "all" ? "" : wnd.label;
+			// 副标题口径：窗口内汇总则补一句全历史，避免读者误以为是全部
+			const winScoped = winName ? wnd.label + " · 共 " + ((data && data.sessionCount) || 0) + " 个" : "全部历史";
 			// 统计周期只有一天时，「活跃天数」「日均」恒为 1 / 等于总量，无信息量，不展示
 			const singleDayWindow = (wnd.dateKeys || []).length <= 1;
 			const invalid = !!(from && to && from > to);
@@ -874,16 +1082,18 @@ window.__ModuleLoader__.load({
 					element(Metric, { icon: element(IconToken), label: "窗口 Token", value: fmtLarge(stats.total), sub: fmtFull(stats.total) }),
 					singleDayWindow ? null : element(Metric, { icon: element(IconCalendar), label: "活跃天数", value: String(stats.activeDays) + " 天", sub: "有用量的天" }),
 					singleDayWindow ? null : element(Metric, { icon: element(IconTrend), label: "日均", value: fmtLarge(avgPerActive), sub: "按活跃天平均" }),
-					element(Metric, { icon: element(IconChat), label: "会话累计", value: fmtFull((data && data.sessionCount) || 0), sub: "全部历史" }),
-					element(Metric, { icon: element(IconMail), label: "消息累计", value: fmtFull((data && data.messageCount) || 0), sub: "全部历史" }),
+					element(Metric, { icon: element(IconChat), label: "窗口会话", value: String(winStats.sessions), sub: winScoped } ),
+					element(Metric, { icon: element(IconMail), label: "窗口消息", value: fmtFull(winStats.messages), sub: "assistant/message" }),
+					element(Metric, { icon: element(IconToken), label: "缓存命中", value: fmtLarge(winStats.cacheRead), sub: fmtFull(winStats.cacheRead) + " tokens" }),
+					element(Metric, { icon: element(IconTrend), label: "命中率", value: fmtPct(winStats.rate), sub: "缓存命中 / 当期满量" }),
 					element(Metric, { icon: element(IconBolt), label: "最常用模型", value: topName, sub: topSub, text: true }),
 				),
 				wnd.dateKeys.length === 0 ? element("div", { className: "ust-warn" }, "当前时间范围没有数据") : null,
 				data.warnings && data.warnings.length > 0 ? element("div", { className: "ust-warn" }, data.warnings.join("；")) : null,
 				hasData && wnd.dateKeys.length > 0 ? element(Trend, { days, window: wnd }) : null,
 				hasData && wnd.dateKeys.length > 0 ? element(Donut, { days, window: wnd }) : null,
-			element(ProvidersView, { providers: data.providers }),
-			element(SessionsView, { sessions: data.sessions }),
+			element(ProvidersView, { days: days, window: wnd }),
+			element(SessionsView, { days: days, window: wnd, meta: data.sessions }),
 				element("div", { className: "ust-footer" },
 					element("div", { className: "ust-meta" },
 						loading ? "正在重新扫描全部会话…" : (data.generatedAt ? "数据更新于 " + fmtClock(data.generatedAt) : ""),

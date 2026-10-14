@@ -6,7 +6,7 @@
 
 **Covers: full-history session scan × usage trend × model dial × activity heatmap × session & provider breakdown × light/dark themes**
 
-[![Version](https://img.shields.io/badge/Version-v1.0.0-1D5FD0?style=for-the-badge)](#version-history)
+[![Version](https://img.shields.io/badge/Version-v1.1.0-1D5FD0?style=for-the-badge)](#version-history)
 [![DSH Plugin](https://img.shields.io/badge/DSH-Plugin-0E7C86?style=for-the-badge)](#installation)
 [![Charts](https://img.shields.io/badge/Charts-Hand--written%20SVG-F59E0B?style=for-the-badge)](#design--implementation)
 [![License](https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge)](#license--credits)
@@ -38,12 +38,12 @@ Dark theme: <img src="assets/panel-dark.png" width="600" alt="Dark theme">
 | Module | Description |
 |------|------|
 | 🧭 **Native menu** | A native menu row directly below "Plugins" in the sidebar, styled exactly like the built-in entries; clicking it opens a main-area page |
-| 📅 **Time range** | Today / Yesterday / Last 7 days / Last 30 days / This month / Last month / All / Custom (with start–end validation); **defaults to Today**; the date bar freezes below the title while scrolling |
+| 📅 **Time range** | Today / Yesterday / Last 7 days / Last 30 days / This month / Last month / All / Custom (with start–end validation); **defaults to Today**; the date bar freezes flush against the title while scrolling, and every query below it follows the selected range |
 | 🔥 **Activity heatmap** | GitHub contribution grid: week columns × weekday rows, five color levels by daily usage, months separated by gaps, covering the last year |
 | 📈 **Usage trend** | One line per model, dots for the current period, peaks labelled; the hover tooltip follows the mouse; legend toggles series |
-| 🍩 **Model usage** | Dial gauge: 100 ticks = 100%, an anchor every 10 ticks; occupies 40% width beside the model breakdown |
-| 📊 **Session stats** | Per-session tokens / turns / messages / share / model breakdown, **paginated beyond 10 rows** |
-| 🔌 **Provider stats** | Aggregated by API provider: input / output / cache hits / total / share / model breakdown, **paginated beyond 10 rows** |
+| 🍩 **Model usage** | Dial gauge: 100 ticks = 100%, an anchor every 10 ticks; occupies 40% width, and the breakdown beside it lists **cache hits and hit rate** |
+| 📊 **Session stats** | Per session: name / turns / messages / tokens / cache hits / hit rate / share / model breakdown / last activity, **paginated beyond 10 rows** |
+| 🔌 **Provider stats** | Aggregated by API provider: input / output / cache hits / hit rate / total / share / model breakdown; **click any row** for that provider's per-model usage and hit rate, **paginated beyond 10 rows** |
 | 🧮 **Top metrics** | Total tokens / peak day / longest session / current streak / longest streak |
 | ♻️ **Auto refresh** | On by default at 5 seconds (options: 5 / 10 / 30 / 60 seconds) |
 | ♿ **Accessibility** | WCAG AA contrast (audited per theme), `prefers-reduced-motion` fallback, transparent hit areas so even small dots are easy to hover |
@@ -91,7 +91,7 @@ Client: hand-written SVG rendered 1:1 at the measured container width
 | Point | Notes |
 |--------|------|
 | **Menu** | Registers the `sidebar.panellist` and `main` slots, reusing DSH's native `panelRow` structure so the style matches built-in entries |
-| **Charts** | Hand-written SVG (GitHub grid / hairline trend / dial ring), zero runtime chart libraries |
+| **Charts** | Hand-written SVG (GitHub grid / stacked bars / dial ring), zero runtime chart libraries |
 | **Palette** | Two-track palette: categorical hues carry model identity, an ordinal lightness ramp carries magnitude; both themes meet WCAG AA |
 | **Typography** | Fixed px type scale plus a 4px spacing ladder; charts render 1:1 at the ResizeObserver-measured width |
 | **Hit areas** | Visual elements carry no events: per-cell transparent rects on the heatmap, full-ring sector paths on the dial, so hovering never flickers |
@@ -163,4 +163,5 @@ Based on [Amer-CN/zcode-usage-stats](https://github.com/Amer-CN/zcode-usage-stat
 
 | Version | Changes |
 |------|------|
+| **v1.1.0** | Date bar now sits flush against the page title (fixed scroll bleed-through); every query below it follows the selected range; usage trend switched to stacked bars; cache hits and hit rate carried through summary cards, model list, session and provider tables (with a provider model-detail dialog); session names shown; heatmap subtitle simplified; wider horizontal padding |
 | **v1.0.0** | Native sidebar menu and main-area page; GitHub-style heatmap; session/provider breakdowns with pagination; mouse-following tooltip; auto refresh; light and dark themes |
