@@ -6,7 +6,7 @@
 
 **Covers: full-history session scan × usage trend × model dial × activity heatmap × session & provider breakdown × light/dark themes**
 
-[![Version](https://img.shields.io/badge/Version-v1.1.0-1D5FD0?style=for-the-badge)](#version-history)
+[![Version](https://img.shields.io/badge/Version-v1.1.0-1D5FD0?style=for-the-badge)](package.json)
 [![DSH Plugin](https://img.shields.io/badge/DSH-Plugin-0E7C86?style=for-the-badge)](#installation)
 [![Charts](https://img.shields.io/badge/Charts-Hand--written%20SVG-F59E0B?style=for-the-badge)](#design--implementation)
 [![License](https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge)](#license--credits)
@@ -159,9 +159,3 @@ MIT License.
 
 Based on [Amer-CN/zcode-usage-stats](https://github.com/Amer-CN/zcode-usage-stats) (MIT), reworked from a **settings page** into a **native sidebar menu plus main-area page**, with a GitHub-style heatmap, session and provider breakdowns, pagination, and auto refresh added.
 
-## 📜 Version history
-
-| Version | Changes |
-|------|------|
-| **v1.1.0** | Date bar now sits flush against the page title (fixed scroll bleed-through); every query below it follows the selected range; usage trend switched to stacked bars; cache hits and hit rate carried through summary cards, model list, session and provider tables (with a provider model-detail dialog); session names shown; heatmap subtitle simplified; wider horizontal padding |
-| **v1.0.0** | Native sidebar menu and main-area page; GitHub-style heatmap; session/provider breakdowns with pagination; mouse-following tooltip; auto refresh; light and dark themes |

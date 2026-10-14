@@ -6,7 +6,7 @@
 
 **覆盖：全历史会话扫描 × 用量柱状图 × 模型刻度环 × 活跃热力图 × 会话与供应商统计 × 深浅双主题**
 
-[![Version](https://img.shields.io/badge/Version-v1.1.0-1D5FD0?style=for-the-badge)](#版本历史)
+[![Version](https://img.shields.io/badge/Version-v1.1.0-1D5FD0?style=for-the-badge)](package.json)
 [![DSH Plugin](https://img.shields.io/badge/DSH-Plugin-0E7C86?style=for-the-badge)](#安装)
 [![图表](https://img.shields.io/badge/图表-手写SVG-F59E0B?style=for-the-badge)](#设计与实现)
 [![License](https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge)](#许可与致谢)
@@ -159,9 +159,3 @@ MIT License。
 
 本项目基于 [Amer-CN/zcode-usage-stats](https://github.com/Amer-CN/zcode-usage-stats)（MIT）改造：将原本挂在**设置页**的视图改为**侧边栏原生菜单 + 主区域页面**，并新增 GitHub 风格热力图、会话统计、供应商统计、分页与自动刷新等能力。
 
-## 📜 版本历史
-
-| 版本 | 变更 |
-|------|------|
-| **v1.1.0** | 日期栏紧贴上标题（滚动透底修复）；日期栏下方所有查询随所选区间重算；用量趋势改堆叠柱状图；缓存命中量与命中率贯通汇总卡 / 模型列表 / 会话表 / 供应商表（含供应商模型明细弹窗）；会话名展示；热力图子标题精简；左右内边距加宽 |
-| **v1.0.0** | 侧边栏原生菜单 + 主区域页面；GitHub 风格热力图；会话 / 供应商统计与分页；Tooltip 跟随鼠标；自动刷新；深浅双主题 |

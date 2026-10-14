@@ -264,8 +264,11 @@ window.__ModuleLoader__.load({
 					cur.turns += s.turns || 0;
 					cur.messages += s.messages || 0;
 					if (s.lastTime && (!cur.lastTime || s.lastTime > cur.lastTime)) cur.lastTime = s.lastTime;
+					// 逐模型的完整四件套：会话弹窗要按模型给命中率，只留 total 不够
 					(s.byModel || []).forEach((m) => {
-						const bm = cur.byModel[m.model] || { model: m.model, color: m.color, total: 0 };
+						const bm = cur.byModel[m.model] || { model: m.model, color: m.color, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+						bm.input += m.input || 0; bm.output += m.output || 0;
+						bm.cacheRead += m.cacheRead || 0; bm.cacheWrite += m.cacheWrite || 0;
 						bm.total += m.total || 0;
 						if (!bm.color && m.color) bm.color = m.color;
 						cur.byModel[m.model] = bm;
@@ -494,6 +497,7 @@ window.__ModuleLoader__.load({
 				const idx = Array.isArray(meta) ? meta.reduce((m, s) => (s && s.id ? (m[s.id] = s, m) : m), {}) : (meta || {});
 				return sessionsIn(days, wnd, idx);
 			}, [days, wnd, meta]);
+			const [detail, setDetail] = react.useState(null);
 			const [page, setPage] = react.useState(0);
 			const PAGE_SIZE = 10;
 			const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
@@ -532,7 +536,16 @@ window.__ModuleLoader__.load({
 							element("th", null, "最近活动"),
 						)),
 					element("tbody", null,
-						pageRows.map((r) => element("tr", { key: r.id },
+						pageRows.map((r) => element("tr", {
+							key: r.id,
+							className: "is-clickable",
+							tabIndex: 0,
+							role: "button",
+							"aria-label": (r.title || r.id) + " 模型明细",
+							title: "点击查看该会话的模型明细",
+							onClick: () => setDetail(r),
+							onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetail(r); } },
+						},
 							element("td", null, element("div", { className: "ust-tblName" },
 								element("span", { className: "ust-ellip", title: r.title || r.id }, r.title || r.id),
 								// 有名称为主、id 为副：同名会话仍可分辨
@@ -551,43 +564,49 @@ window.__ModuleLoader__.load({
 				),
 			),
 				rows.length > PAGE_SIZE ? element(Pager, { page: safePage, pageCount, total: rows.length, unit: "会话", onChange: setPage }) : null,
+				detail ? element(ModelsDetailModal, {
+					title: detail.title || detail.id,
+					sub: (wnd.id === "all" ? "全部历史" : wnd.label) + " · " + ((detail.byModel || []).length) + " 个模型",
+					sumItems: [
+						{ label: "Token", value: fmtLarge(detail.total) },
+						{ label: "缓存命中", value: fmtLarge(detail.cacheRead) },
+						{ label: "命中率", value: fmtPct(hitRateOf(detail)) },
+						{ label: "轮次", value: String(detail.turns || 0) },
+						{ label: "消息", value: String(detail.messages || 0) },
+					],
+					models: detail.byModel,
+					onClose: () => setDetail(null),
+				}) : null,
 		);
 		}
-		// ---------- 供应商明细弹窗 ----------
-		// 点供应商一行后展开：逐个模型的用量与命中率
-		function ProviderDetailModal({ row, wnd, onClose }) {
+		// ---------- 模型明细弹窗（供应商 / 会话共用） ----------
+		// 标题 + 摘要项 + 逐模型行；点遮罩、点关闭按钮或按 Esc 关闭
+		function ModelsDetailModal({ title, sub, sumItems, models, onClose }) {
 			react.useEffect(() => {
 				const onKey = (e) => { if (e.key === "Escape") onClose(); };
 				window.addEventListener("keydown", onKey);
 				return () => window.removeEventListener("keydown", onKey);
 			}, [onClose]);
-			const models = (row && row.byModel) || [];
-			const sum = models.reduce((a, m) => a + (m.total || 0), 0);
+			const rows = models || [];
+			const sum = rows.reduce((a, m) => a + (m.total || 0), 0);
 			return element("div", { className: "ust-dlgMask", onClick: onClose },
 				element("div", {
 					className: "ust-dlg", role: "dialog", "aria-modal": "true",
-					"aria-label": "供应商模型明细", onClick: (e) => e.stopPropagation(),
+					"aria-label": "模型明细", onClick: (e) => e.stopPropagation(),
 				},
 					element("div", { className: "ust-dlgHead" },
 						element("div", { className: "ust-dlgTitleBox" },
-							element("h3", { className: "ust-dlgTitle" }, row.provider),
-							element("p", { className: "ust-dlgSub" },
-								(wnd && wnd.id !== "all" ? wnd.label + " · " : "") + models.length + " 个模型"),
+							element("h3", { className: "ust-dlgTitle", title: title }, title),
+							sub ? element("p", { className: "ust-dlgSub" }, sub) : null,
 						),
 						element("button", { type: "button", className: "ust-dlgClose", "aria-label": "关闭", title: "关闭", onClick: onClose }, element(IconClose)),
 					),
 					element("div", { className: "ust-dlgBody" },
-						element("div", { className: "ust-dlgSum" },
-							element("div", { className: "ust-dlgSumItem" },
-								element("div", { className: "ust-dlgSumLab" }, "总量"),
-								element("div", { className: "ust-dlgSumVal" }, fmtLarge(row.total))),
-							element("div", { className: "ust-dlgSumItem" },
-								element("div", { className: "ust-dlgSumLab" }, "缓存命中"),
-								element("div", { className: "ust-dlgSumVal" }, fmtLarge(row.cacheRead))),
-							element("div", { className: "ust-dlgSumItem" },
-								element("div", { className: "ust-dlgSumLab" }, "命中率"),
-								element("div", { className: "ust-dlgSumVal" }, fmtPct(hitRateOf(row)))),
-						),
+						sumItems && sumItems.length ? element("div", { className: "ust-dlgSum" },
+							sumItems.map((it) => element("div", { key: it.label, className: "ust-dlgSumItem" },
+								element("div", { className: "ust-dlgSumLab" }, it.label),
+								element("div", { className: "ust-dlgSumVal" }, it.value))),
+						) : null,
 						element("div", { className: "ust-tblWrap" },
 							element("table", { className: "ust-tbl" },
 								element("thead", null, element("tr", null,
@@ -599,7 +618,7 @@ window.__ModuleLoader__.load({
 									element("th", { className: "ust-tblNum" }, "总量"),
 									element("th", { className: "ust-tblNum" }, "占比"),
 								)),
-								element("tbody", null, models.map((m) => element("tr", { key: m.model },
+								element("tbody", null, rows.map((m) => element("tr", { key: m.model },
 									element("td", null, element("div", { className: "ust-tblName" },
 										element("span", { className: "ust-dot", style: { background: m.color || "var(--ink)" } }),
 										element("span", { className: "ust-ellip", title: m.model }, m.model))),
@@ -674,7 +693,17 @@ window.__ModuleLoader__.load({
 				),
 			),
 				rows.length > PAGE_SIZE ? element(Pager, { page: safePage, pageCount, total: rows.length, unit: "供应商", onChange: setPage }) : null,
-				detail ? element(ProviderDetailModal, { row: detail, wnd, onClose: () => setDetail(null) }) : null,
+				detail ? element(ModelsDetailModal, {
+					title: detail.provider,
+					sub: (wnd && wnd.id !== "all" ? wnd.label + " · " : "") + ((detail.byModel || []).length) + " 个模型",
+					sumItems: [
+						{ label: "总量", value: fmtLarge(detail.total) },
+						{ label: "缓存命中", value: fmtLarge(detail.cacheRead) },
+						{ label: "命中率", value: fmtPct(hitRateOf(detail)) },
+					],
+					models: detail.byModel,
+					onClose: () => setDetail(null),
+				}) : null,
 		);
 		}
 		function Trend({ days, window: wnd }) {

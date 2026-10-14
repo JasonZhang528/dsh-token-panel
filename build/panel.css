@@ -185,13 +185,18 @@ body[data-ds-dark-theme] .ust-tab.active { background: var(--ink); color: #19191
 .ust-model-sub { flex: none; font-size: 12px; color: var(--muted); }
 /* 命中量 / 命中率：等宽数字右对齐，便于纵向比对 */
 .ust-model-hit { flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.ust-model-rate { flex: none; min-width: 34px; text-align: right; font-size: 12px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
-.ust-model-row { display: flex; align-items: baseline; gap: 10px; }
+.ust-model-rate { flex: none; width: 42px; text-align: right; font-size: 12px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+/* 右侧数值列定宽右对齐：三列在每一行都落在同一竖线上，上下对齐 */
+.ust-model-row { display: flex; align-items: baseline; gap: 12px; }
+.ust-model-hit, .ust-model-sub, .ust-model-val { text-align: right; }
+.ust-model-hit { width: 108px; }
+.ust-model-sub { width: 76px; }
+.ust-model-val { width: 40px; }
 
 /* ── 图表下方的图例（可点击显隐） ───────────────────────── */
 .ust-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; }
 /* 图例置于图表之上时：贴着图表，且两行图例之间不留大缝 */
-.ust-legend--above { margin-top: 0; margin-bottom: 6px; }
+.ust-legend--above { margin-top: 0; margin-bottom: 6px; justify-content: center; }
 .ust-legend--above + .ust-legend--above { margin-top: -4px; }
 .ust-legend-item {
 	display: flex; align-items: center; gap: 7px;

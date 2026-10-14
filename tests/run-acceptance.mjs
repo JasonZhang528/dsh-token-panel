@@ -183,6 +183,24 @@ ok("列表显示命中率", c.includes('className: "ust-model-rate" }, fmtPct(hi
 ok("圆环 tooltip 含命中率", c.includes('"命中 " + fmtFull(s.cacheRead || 0) + " · 命中率 " + fmtPct(hitRateOf(s))'));
 ok("命中数据有样式", c.includes(".ust-model-hit {") && c.includes(".ust-model-rate {"));
 
+section("客户端：模型明细弹窗（会话 / 供应商共用）");
+ok("弹窗组件通用化", c.includes("function ModelsDetailModal({ title, sub, sumItems, models, onClose })"));
+ok("供应商弹窗改用共享组件", c.includes("detail ? element(ModelsDetailModal, {") && c.includes("title: detail.provider"));
+ok("会话弹窗已接入", c.includes("title: detail.title || detail.id") && c.includes("models: detail.byModel"));
+ok("会话行可点击", c.includes("onClick: () => setDetail(r)"));
+ok("会话行支持键盘", c.includes("onKeyDown") && c.includes("e.preventDefault()"));
+ok("弹窗支持 Esc 关闭", c.includes("Escape") && c.includes('window.addEventListener("keydown", onKey)'));
+ok("会话逐模型四件套", c.includes("bm.cacheRead += m.cacheRead || 0"));
+ok("弹窗输出模型命中率", c.includes("fmtPct(hitRateOf(m))"));
+
+section("客户端：图例居中与列表对齐");
+ok("图例水平居中", c.includes("justify-content: center; }") && c.includes(".ust-legend--above"));
+ok("模型列表数值列右对齐", c.includes(".ust-model-hit, .ust-model-sub, .ust-model-val { text-align: right; }"));
+ok("命中量列定宽", c.includes(".ust-model-hit { width: 108px; }"));
+ok("总量列定宽", c.includes(".ust-model-sub { width: 76px; }"));
+ok("占比列定宽", c.includes(".ust-model-val { width: 40px; }"));
+ok("命中率列定宽", c.includes(".ust-model-rate {") && c.includes("width: 42px"));
+
 section("客户端：热力图色阶去文字");
 ok("色阶不再显示「少/多」", !c.includes('"ust-scale-lab" }, "少"') && !c.includes('"ust-scale-lab" }, "多"'));
 ok("色阶方块保留", c.includes('className: "ust-gh-sw ust-gh-lv" + lv'));
