@@ -187,7 +187,8 @@ body[data-ds-dark-theme] .ust-tab.active { background: var(--ink); color: #19191
 	color: var(--muted); border-bottom: 1px solid var(--rule);
 }
 .ust-model--head .ust-model-name { font-size: 11px; font-weight: 600; color: var(--muted); }
-.ust-model--head .ust-model-hit, .ust-model--head .ust-model-sub { color: var(--muted); font-weight: 600; }
+.ust-model--head .ust-model-in, .ust-model--head .ust-model-out,
+.ust-model--head .ust-model-hit, .ust-model--head .ust-model-sub,
 .ust-model--head .ust-model-rate, .ust-model--head .ust-model-val { color: var(--muted); font-weight: 600; }
 .ust-model {
 	display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -200,14 +201,16 @@ body[data-ds-dark-theme] .ust-tab.active { background: var(--ink); color: #19191
 .ust-model-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .ust-model-val { flex: none; font-size: 13px; font-weight: 650; color: var(--ink); }
 .ust-model-sub { flex: none; font-size: 12px; color: var(--muted); }
-/* 命中量 / 命中率：等宽数字右对齐，便于纵向比对 */
-.ust-model-hit { flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* 数值列：等宽数字右对齐，便于纵向比对 */
+.ust-model-in, .ust-model-out, .ust-model-hit { flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ust-model-rate { flex: none; width: 42px; text-align: right; font-size: 12px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
 /* 右侧数值列定宽右对齐：三列在每一行都落在同一竖线上，上下对齐 */
 .ust-model-row { display: flex; align-items: baseline; gap: 12px; }
-.ust-model-hit, .ust-model-sub, .ust-model-val { text-align: right; }
-.ust-model-hit { width: 108px; }
-.ust-model-sub { width: 76px; }
+.ust-model-in, .ust-model-out, .ust-model-hit, .ust-model-sub, .ust-model-rate, .ust-model-val { text-align: right; }
+.ust-model-in { width: 62px; }
+.ust-model-out { width: 58px; }
+.ust-model-hit { width: 76px; }
+.ust-model-sub { width: 72px; }
 .ust-model-val { width: 40px; }
 
 /* ── 图表下方的图例（可点击显隐） ───────────────────────── */

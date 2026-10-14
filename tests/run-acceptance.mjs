@@ -156,10 +156,10 @@ ok("分母为 0 显示占位符", c.includes('return r === null || r === undefin
 ok("汇总卡新增缓存命中", c.includes('label: "缓存命中"'));
 ok("汇总卡新增命中率", c.includes('label: "命中率"'));
 ok("窗口命中率按当期满量折算", c.includes("rate: winAgg.total > 0 ? winAgg.cacheRead / winAgg.total : null"));
-ok("会话表新增命中列", c.includes('element("th", { className: "ust-tblNum" }, "命中")'));
+ok("会话表新增缓存命中列", c.includes('element("th", { className: "ust-tblNum" }, "缓存命中")'));
 ok("会话表新增命中率列", c.includes('element("th", { className: "ust-tblNum" }, "命中率")'));
 ok("会话行输出命中与命中率", c.includes("fmtLarge(r.cacheRead)") && c.includes("fmtPct(hitRateOf(r))"));
-ok("供应商表新增命中率列", /"供应商"[\s\S]{0,500}?"命中率"[\s\S]{0,300}?"总量"/.test(c));
+ok("供应商表含命中率列", /"供应商"[\s\S]{0,600}?"命中率"/.test(c));
 ok("会话窗口聚合累计四件套", c.includes("cur.cacheRead += s.cacheRead || 0;"));
 
 section("客户端：图表改版（柱状图，命中率折线已移除）");
@@ -178,7 +178,7 @@ ok("相邻色点留间距", c.includes(".ust-dot + .ust-dot { margin-left: 4px; 
 section("客户端：圆环模型列表带命中数据");
 ok("模型汇总保留四件套", c.includes("function modelTotalsIn(days, wnd)") && c.includes("cur.cacheRead += x.cacheRead || 0"));
 ok("其他桶合并四件套", c.includes("const sumMetrics = (rows) =>") && c.includes("...sumMetrics(tail)"));
-ok("列表显示命中量", c.includes('className: "ust-model-hit" }, "命中 " + fmtLarge(s.cacheRead)'));
+ok("列表显示缓存命中量", c.includes('className: "ust-model-hit" }, fmtLarge(s.cacheRead)'));
 ok("列表显示命中率", c.includes('className: "ust-model-rate" }, fmtPct(hitRateOf(s))'));
 ok("圆环 tooltip 含命中率", c.includes('"命中 " + fmtFull(s.cacheRead || 0) + " · 命中率 " + fmtPct(hitRateOf(s))'));
 ok("命中数据有样式", c.includes(".ust-model-hit {") && c.includes(".ust-model-rate {"));
@@ -202,6 +202,19 @@ ok("零用量柱不标数值", c.includes('!(v.total > 0)'));
 ok("标签样式已定义", c.includes('.ust-bar-val {') && c.includes('stroke: var(--surface); stroke-width: 2.5px;'));
 ok("峰值判定提前", c.indexOf('let peakIdx = 0, peakVal = -1;') < c.indexOf('const bars = values.map'));
 
+section("客户端：用量列统一口径与次序");
+// 统一为 输入 / 输出 / 缓存命中 / 总量 / 命中率 / 占比（会话表在「消息」之后，供应商/弹窗在名称列之后）
+const order = ["输入", "输出", "缓存命中", "总量", "命中率", "占比"];
+const orderRe = new RegExp(order.map((x) => '"' + x + '"').join('[\\s\\S]{0,120}?'));
+ok("会话表列序统一", /"轮次"[\s\S]{0,400}?"消息"[\s\S]{0,900}?"输入"[\s\S]{0,900}?"输出"[\s\S]{0,900}?"缓存命中"[\s\S]{0,900}?"总量"[\s\S]{0,900}?"命中率"[\s\S]{0,900}?"占比"/.test(c));
+ok("供应商表列序统一", /"供应商"[\s\S]{0,900}?"输入"[\s\S]{0,900}?"输出"[\s\S]{0,900}?"缓存命中"[\s\S]{0,900}?"总量"[\s\S]{0,900}?"命中率"[\s\S]{0,900}?"占比"/.test(c));
+ok("明细弹窗列序统一", /"模型"[\s\S]{0,900}?"输入"[\s\S]{0,900}?"输出"[\s\S]{0,900}?"缓存命中"[\s\S]{0,900}?"总量"[\s\S]{0,900}?"命中率"[\s\S]{0,900}?"占比"/.test(c));
+ok("六列次序整体成立", orderRe.test(c));
+ok("会话表补充输入输出列", c.includes("fmtLarge(r.input)") && c.includes("fmtLarge(r.output)"));
+ok("弹窗摘要标签为总量", c.includes('{ label: "总量", value: fmtLarge(detail.total) }') && !c.includes('{ label: "Token", value: fmtLarge(detail.total) }'));
+ok("圆环列表补齐六列", c.includes('className: "ust-model-in"') && c.includes('className: "ust-model-out"') && c.includes("ust-model-in, .ust-model-out, .ust-model-hit"));
+ok("圆环输入输出列定宽", c.includes(".ust-model-in { width: 62px; }") && c.includes(".ust-model-out { width: 58px; }"));
+
 section("客户端：模型列表列名");
 ok("列表有列名表头", c.includes("ust-model--head") && c.includes('"aria-hidden": "true"'));
 ok("表头列名齐全", ["模型","缓存命中","命中率","总量","占比"].every((x) => c.includes('"' + x + '"')));
@@ -215,9 +228,9 @@ ok("弹窗超过 10 条显示分页控件", c.includes('unit: "模型", onChange
 
 section("客户端：图例居中与列表对齐");
 ok("图例水平居中", c.includes("justify-content: center; }") && c.includes(".ust-legend--above"));
-ok("模型列表数值列右对齐", c.includes(".ust-model-hit, .ust-model-sub, .ust-model-val { text-align: right; }"));
-ok("命中量列定宽", c.includes(".ust-model-hit { width: 108px; }"));
-ok("总量列定宽", c.includes(".ust-model-sub { width: 76px; }"));
+ok("模型列表数值列右对齐", c.includes(".ust-model-in, .ust-model-out, .ust-model-hit, .ust-model-sub, .ust-model-rate, .ust-model-val { text-align: right; }"));
+ok("命中量列定宽", c.includes(".ust-model-hit { width: 76px; }"));
+ok("总量列定宽", c.includes(".ust-model-sub { width: 72px; }"));
 ok("占比列定宽", c.includes(".ust-model-val { width: 40px; }"));
 ok("命中率列定宽", c.includes(".ust-model-rate {") && c.includes("width: 42px"));
 
