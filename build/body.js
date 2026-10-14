@@ -392,7 +392,7 @@ window.__ModuleLoader__.load({
 				const start0 = new Date(end0);
 				start0.setDate(start0.getDate() - (53 * 7 - 1));
 				const cells = [];
-				let maxDay = 0, peak = null, activeDays = 0;
+				let maxDay = 0, peak = null, activeDays = 0, yearTotal = 0;
 				const cumMap = new Map();
 				let cum = 0;
 				(days || []).forEach((d) => { cum += totalOf(d); cumMap.set(d.date, cum); });
@@ -406,9 +406,10 @@ window.__ModuleLoader__.load({
 						month: cur.getMonth() + 1, dom: cur.getDate(), isToday: key === dateKey(today),
 					});
 					if (total > 0) activeDays += 1;
+					yearTotal += total;
 					if (total > maxDay) { maxDay = total; peak = cells[cells.length - 1]; }
 				}
-				return { cells, maxDay, peak, activeDays, start: start0, end: end0 };
+				return { cells, maxDay, peak, activeDays, yearTotal, start: start0, end: end0 };
 			}, [days]);
 
 			// GitHub 五档底色：按用量占比分档（无数据用 quiet）
@@ -453,19 +454,29 @@ window.__ModuleLoader__.load({
 			return element("div", { className: "ust-block" },
 				element("div", { className: "ust-block-head" },
 					element("div", { className: "ust-block-titleRow" },
-						// 标题带上当前日期选择器取值，一眼可见页面处于哪个区间
-						element("h2", { className: "ust-h2" }, (wnd && wnd.label ? wnd.label + " " : "") + "活跃热力图"),
+						element("h2", { className: "ust-h2" }, "活跃热力图"),
 						element("div", { className: "ust-sub" },
-							// 子标题只留统计口径：日期值已上移到标题，避免重复
-							"最近一年 · 活跃 " + model.activeDays + " 天",
+							"一块 = 一天，颜色越深 = 当日 Token 越多 · 活跃 " + model.activeDays + " 天",
 							model.peak && model.peak.total > 0
 								? element("span", null, " · 峰值 " + fmtLarge(model.peak.total) + "（" + fmtDayLabel(model.peak.key) + "）")
 								: null,
 						),
-						// 只留色阶方块：颜色深浅的含义已由副标题说明，再挂「少/多」是冗余
+						// 色阶方块连「少 / 多」一起给出，颜色含义一眼可读
 						element("div", { className: "ust-gh-scale" },
+							element("span", { className: "ust-scale-lab" }, "少"),
 							[0, 1, 2, 3, 4].map((lv) => element("span", { key: lv, className: "ust-gh-sw ust-gh-lv" + lv })),
+							element("span", { className: "ust-scale-lab" }, "多"),
 						),
+					),
+					// 右侧年度概况：填充标题行右侧的留白，口径为「最近一年」，与上方的全历史汇总卡不重复
+					element("div", { className: "ust-gh-stats" },
+						[
+							{ label: "近一年合计", value: fmtLarge(model.yearTotal) },
+							{ label: "近一年活跃", value: String(model.activeDays) + " 天" },
+							{ label: "近一年峰值", value: model.peak && model.peak.total > 0 ? fmtLarge(model.peak.total) : "—" },
+						].map((it) => element("div", { key: it.label, className: "ust-gh-stat" },
+							element("div", { className: "ust-gh-stat-lab" }, it.label),
+							element("div", { className: "ust-gh-stat-val" }, it.value))),
 					),
 				),
 				element("div", { className: "ust-gh-wrap" },
@@ -576,8 +587,9 @@ window.__ModuleLoader__.load({
 							element("td", { className: "ust-tblNum" }, String(r.messages || 0)),
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.input)),
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.output)),
-							element("td", { className: "ust-tblNum" }, fmtLarge(r.total)),
+							// 与表头严格对应：缓存命中在前、总量在后（此前漏改导致两列互换，Sir 实测发现的正是这个）
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.cacheRead)),
+							element("td", { className: "ust-tblNum" }, fmtLarge(r.total)),
 							element("td", { className: "ust-tblNum" }, fmtPct(hitRateOf(r))),
 							element("td", { className: "ust-tblNum" }, (grand > 0 ? Math.round((r.total / grand) * 100) : 0) + "%"),
 							element("td", null, (r.byModel || []).slice(0, 4).map((m, i) =>

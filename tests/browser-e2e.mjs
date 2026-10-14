@@ -72,7 +72,8 @@ try {
   results["会话超过 10 条自动分页"] = allRange.pagers.some((x) => /会话/.test(x) && /第 1 \/ \d+ 页/.test(x));
   results["日期栏有不透明背景（滚动不透底）"] = /^rgb/.test(String(page.headerBg)) && page.headerBg !== "rgba(0, 0, 0, 0)";
   results["日期栏滚动冻结"] = page.headerPos === "sticky";
-  results["热力图统计移入子标题"] = page.subtitle.some((x) => /活跃热力图 :: .*最近一年.*活跃 \d+ 天/.test(x));
+  // 子标题现在含颜色深浅说明与活跃天数；日期取值不再出现在子标题
+  results["热力图统计移入子标题"] = page.subtitle.some((x) => /活跃热力图 :: .*颜色越深 = 当日 Token 越多.*活跃 \d+ 天/.test(x));
   results["子标题与标题同行"] = true;
   results["展示真实用量数据"] = typeof page.text === "string" && page.text.length > 10;
   // 本次改动：热力图单模式 / 单日指标 / 圆环横排

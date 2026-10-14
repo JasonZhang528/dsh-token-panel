@@ -411,7 +411,13 @@ body[data-ds-dark-theme] .ust-gh-lv2 { fill: #2E7FB8; }
 body[data-ds-dark-theme] .ust-gh-lv3 { fill: #4AA3DC; }
 body[data-ds-dark-theme] .ust-gh-lv4 { fill: #7CC4F0; }
 .ust-gh-axis { fill: var(--faint, #86857F); font-size: 10px; font-family: inherit; }
-.ust-gh-scale { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
+.ust-gh-scale { display: flex; align-items: center; gap: 4px; }
+/* 热力图标题行右侧的年度概况：填充标题行留白，口径为最近一年 */
+.ust-gh-stats { display: flex; align-items: baseline; gap: 22px; flex-wrap: wrap; }
+.ust-gh-stat { min-width: 0; }
+.ust-gh-stat-lab { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.ust-gh-stat-val { margin-top: 2px; font-size: 15px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ust-block-head .ust-gh-scale { margin: 0 0 0 auto; }
 .ust-gh-sw { width: 11px; height: 11px; border-radius: 2.5px; display: inline-block; }
 .ust-gh-legend { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
 .ust-gh-note { font-size: 12px; color: var(--muted, #5F5E59); font-variant-numeric: tabular-nums; }

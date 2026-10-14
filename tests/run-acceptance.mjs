@@ -134,7 +134,7 @@ ok("meta 按 id 建索引", c.includes("meta.reduce((m, s) => (s && s.id ? (m[s.
 ok("会话名为主、id 为副", c.includes("ust-tblId") && c.includes('className: "ust-tblSub ust-tblId"'));
 ok("会话统计副标题按窗口", c.includes('(wnd.id === "all" ? "全部历史" : wnd.label) + "会话的 Token 用量与会话内模型明细"'));
 ok("供应商副标题按窗口", c.includes('(wnd.id === "all" ? "全部历史" : wnd.label) + "按 API 提供商汇总，含各家模型明细"'));
-ok("热力图副标题重写", c.includes('"最近一年 · 活跃 " + model.activeDays + " 天"'));
+ok("热力图副标题重写", c.includes('"一块 = 一天，颜色越深 = 当日 Token 越多 · 活跃 " + model.activeDays + " 天"'));
 ok("热力图副标题含峰值日期", c.includes('fmtDayLabel(model.peak.key)'));
 ok("粘性栏底色为两层（不透底）", c.includes("background-color: var(--surface);") && c.includes("linear-gradient(var(--dsw-alias-bg-layer-2, transparent)"));
 const darkHeaderRule = /body\[data-ds-dark-theme\] \.ust-header \{[^}]*background-color: var\(--surface\)[^}]*linear-gradient\(var\(--dsw-alias-bg-layer-2, transparent\)/.test(c);
@@ -209,8 +209,8 @@ ok("弹窗色点用共享序号", c.includes('className: "ust-dot", style: { bac
 ok("ranks 下发到三个视图", (c.match(/ranks: ranks/g) || []).length >= 3);
 
 section("客户端：热力图标题带日期");
-ok("标题为日期值 + 活跃热力图", c.includes('(wnd && wnd.label ? wnd.label + " " : "") + "活跃热力图"'));
-ok("子标题不再重复日期值", c.includes('"最近一年 · 活跃 " + model.activeDays + " 天"') && !c.includes('wnd.label + " · " : "") + "最近一年'));
+ok("标题不带日期取值", c.includes('element("h2", { className: "ust-h2" }, "活跃热力图")'));
+ok("子标题含颜色深浅说明", c.includes('颜色越深 = 当日 Token 越多'));
 
 section("客户端：坐标轴全刻度");
 ok("逐格出刻度", c.includes("const xAxis = xData.map((d, i) => element(\"text\"") && !c.includes("labelEvery"));
@@ -221,6 +221,22 @@ section("客户端：进入即渲染");
 ok("首次请求延后到首帧之后", c.includes("requestAnimationFrame(run)") && c.includes("cancelAnimationFrame(id)"));
 ok("日期栏外壳抽为共用元素", c.includes("const headerEl =") && c.includes("headerEl,"));
 ok("加载态先画页面骨架", c.includes('element("div", { className: "ust-placeholder" }, "正在读取本机会话记录…")'));
+
+section("客户端：表头与数据列严格对应");
+// 回归：曾发生会话表只改表头、漏改数据行，导致「缓存命中」与「总量」互换。
+// 这里逐表断言：表头次序与数据单元格次序一一对应。
+{
+  // 会话表：数值列中前两格是轮次/消息（String），之后依次是 输入/输出/缓存命中/总量/命中率
+  const sessIdx = c.indexOf('element("th", null, "会话")');
+  const sessPart = c.slice(sessIdx, sessIdx + 4000);
+  const sessTh = [...sessPart.matchAll(/element\("th", \{ className: "ust-tblNum" \}, "([^"]+)"\)/g)].map((m) => m[1]);
+  const sessTd = [...sessPart.matchAll(/element\("td", \{ className: "ust-tblNum" \}, (fmtLarge\(r\.\w+\)|fmtPct\(hitRateOf\(r\)\))/g)].map((m) => m[1]);
+  ok("会话表表头数值列齐全", JSON.stringify(sessTh) === JSON.stringify(["轮次", "消息", "输入", "输出", "缓存命中", "总量", "命中率", "占比"]));
+  // 数据行前面还有「会话名 + 轮次 + 消息」3 格，故 fmtLarge 系列从第 4 个数值格起、与表头第 3~7 项对应
+  ok("会话表缓存命中列对齐", sessTh[4] === "缓存命中" && sessTd[2] === "fmtLarge(r.cacheRead)");
+  ok("会话表总量列对齐", sessTh[5] === "总量" && sessTd[3] === "fmtLarge(r.total)");
+  ok("会话表命中率列对齐", sessTh[6] === "命中率" && sessTd[4] === "fmtPct(hitRateOf(r))");
+}
 
 section("客户端：用量列统一口径与次序");
 // 统一为 输入 / 输出 / 缓存命中 / 总量 / 命中率 / 占比（会话表在「消息」之后，供应商/弹窗在名称列之后）
@@ -255,7 +271,7 @@ ok("占比列定宽", c.includes(".ust-model-val { width: 40px; }"));
 ok("命中率列定宽", c.includes(".ust-model-rate {") && c.includes("width: 42px"));
 
 section("客户端：热力图色阶去文字");
-ok("色阶不再显示「少/多」", !c.includes('"ust-scale-lab" }, "少"') && !c.includes('"ust-scale-lab" }, "多"'));
+ok("色阶恢复少/多标注", c.includes('"ust-scale-lab" }, "少"') && c.includes('"ust-scale-lab" }, "多"'));
 ok("色阶方块保留", c.includes('className: "ust-gh-sw ust-gh-lv" + lv'));
 
 
