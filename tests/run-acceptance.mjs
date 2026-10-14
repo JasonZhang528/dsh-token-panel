@@ -147,8 +147,11 @@ ok("窄屏内边距收敛", c.includes("@media (max-width: 900px)") && c.include
 section("客户端：日期栏贴合标题（上内边距归零）");
 ok("滚动容器上内边距为 0", /\.ust-pageBody \{[^}]*padding: 0 32px 0; \}/.test(c));
 ok("页脚吸附最底部", c.includes(".ust-footer {") && c.includes("position: sticky;") && c.includes("bottom: 0;"));
-ok("页脚通栏并自担底部间距", c.includes("margin: 4px -32px 0;") && c.includes("padding: 12px 32px 24px;"));
+ok("页脚通栏并自担底部间距", c.includes("margin: 4px -32px 0;") && c.includes("padding: 6px 32px 8px;"));
 ok("子标题小一号", c.includes(".ust-sub { margin: 3px 0 0; font-size: 11px;"));
+ok("页脚内控件收紧", c.includes(".ust-footer .ust-btn { padding: 2px 10px;") && c.includes(".ust-footer .ust-autoSeg .ust-tab { padding: 1px 6px; }"));
+ok("自定义选中后展示区间", c.includes('range.id === "custom" && range.from && range.to') && c.includes("range.from.slice(5).replace"));
+ok("自定义区间徽标样式", c.includes(".ust-tab--custom { letter-spacing: 0; font-variant-numeric: tabular-nums; }"));
 ok("间距改由 .ust-root 承担", c.includes("padding: 12px 0 0;"));
 ok("窄屏 .ust-root 同步收敛", c.includes(".ust-root { padding-top: 8px; }"));
 ok("弹窗主体同样上内边距归零", c.includes(".ust-panelBody{flex:1 1 auto;min-height:0;overflow:auto;padding:0 24px 20px}"));

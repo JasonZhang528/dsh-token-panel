@@ -1133,9 +1133,15 @@ window.__ModuleLoader__.load({
 							}, r.label)),
 							element("span", {
 								role: "tab", "aria-selected": range.id === "custom",
-								className: "ust-tab" + (range.id === "custom" ? " active" : ""),
+								className: "ust-tab ust-tab--custom" + (range.id === "custom" ? " active" : ""),
+								title: range.id === "custom" && range.from && range.to ? "当前区间：" + range.from + " 至 " + range.to : "选择起止日期",
 								onClick: () => setShowCustom((v) => !v),
-							}, "自定义"),
+							},
+								// 选中自定义后，tab 上直接带出所选区间，一眼可见当前范围
+								range.id === "custom" && range.from && range.to
+									? ("自定义 " + range.from.slice(5).replace("-", "/") + "~" + range.to.slice(5).replace("-", "/"))
+									: "自定义",
+							),
 						),
 						showCustom ? element("div", { className: "ust-custom" },
 							element("div", { className: "ust-custom-row" },

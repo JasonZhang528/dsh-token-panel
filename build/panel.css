@@ -96,6 +96,8 @@ body[data-ds-dark-theme] .ust-header {
 .ust-tab.active { background: var(--ink); color: var(--surface); }
 body[data-ds-dark-theme] .ust-tab.active { background: var(--ink); color: #191918; }
 .ust-tab:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+/* 自定义 tab 选中后带出区间文本，字距略收紧避免过长换行 */
+.ust-tab--custom { letter-spacing: 0; font-variant-numeric: tabular-nums; }
 
 /* ── 指标组 ─────────────────────────────────────────────── */
 .ust-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 16px 20px; }
@@ -306,7 +308,8 @@ body[data-ds-dark-theme] .ust-tab.active { background: var(--ink); color: #19191
   display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
   /* 负外边距吃掉 .ust-pageBody 的左右 32px，使页脚通栏；底部间距由自身 padding 承担 */
   margin: 4px -32px 0;
-  padding: 12px 32px 24px;
+  /* 高度对齐文字 1.5 倍行高：12px 字号 * 1.5 = 18px 内容高 + 上下各 6px */
+  padding: 6px 32px 8px;
   /* 与 .ust-header 同款：不透明底 + 玻璃层，滚动内容不透出 */
   background-color: var(--surface);
   background-image: linear-gradient(var(--dsw-alias-bg-layer-2, transparent), var(--dsw-alias-bg-layer-2, transparent));
@@ -319,6 +322,12 @@ body[data-ds-dark-theme] .ust-footer {
 }
 /* 底部自动刷新控件（此前误嵌进 .ust-footer 声明块内，整组样式实际失效，现移出） */
 .ust-auto { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+/* 页脚内控件收紧：页脚高度对齐「文字 1.5 倍行高」，全局按钮/页签在此会撑破 */
+.ust-footer .ust-btn { padding: 2px 10px; font-size: 12px; border-radius: 6px; }
+.ust-footer .ust-btn-ico { width: 12px; height: 12px; }
+.ust-footer .ust-btn-ico svg { width: 12px; height: 12px; }
+.ust-footer .ust-autoSeg .ust-tab { padding: 1px 6px; }
+.ust-footer .ust-autoToggle { font-size: 12px; }
 .ust-autoToggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; user-select: none; }
 .ust-autoCheck { width: 14px; height: 14px; margin: 0; accent-color: var(--ink); cursor: pointer; }
 .ust-autoSeg { display: flex; align-items: center; gap: 2px; }
