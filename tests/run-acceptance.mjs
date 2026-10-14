@@ -139,13 +139,16 @@ ok("热力图副标题含峰值日期", c.includes('fmtDayLabel(model.peak.key)'
 ok("粘性栏底色为两层（不透底）", c.includes("background-color: var(--surface);") && c.includes("linear-gradient(var(--dsw-alias-bg-layer-2, transparent)"));
 const darkHeaderRule = /body\[data-ds-dark-theme\] \.ust-header \{[^}]*background-color: var\(--surface\)[^}]*linear-gradient\(var\(--dsw-alias-bg-layer-2, transparent\)/.test(c);
 ok("深色同样两层底色", darkHeaderRule);
-ok("内容区左右内边距 32px", c.includes("padding: 0 32px 24px;"));
+ok("内容区左右内边距 32px", c.includes(".ust-pageBody { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 32px 0; }"));
 ok("标题栏左右内边距 32px", c.includes("padding: 16px 32px 10px;"));
 ok("粘性栏内边距 32px", c.includes("padding: 10px 32px;"));
 ok("窄屏内边距收敛", c.includes("@media (max-width: 900px)") && c.includes("padding-left: 16px; padding-right: 16px;"));
 
 section("客户端：日期栏贴合标题（上内边距归零）");
-ok("滚动容器上内边距为 0", c.includes(".ust-pageBody { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 32px 24px; }"));
+ok("滚动容器上内边距为 0", /\.ust-pageBody \{[^}]*padding: 0 32px 0; \}/.test(c));
+ok("页脚吸附最底部", c.includes(".ust-footer {") && c.includes("position: sticky;") && c.includes("bottom: 0;"));
+ok("页脚通栏并自担底部间距", c.includes("margin: 4px -32px 0;") && c.includes("padding: 12px 32px 24px;"));
+ok("子标题小一号", c.includes(".ust-sub { margin: 3px 0 0; font-size: 11px;"));
 ok("间距改由 .ust-root 承担", c.includes("padding: 12px 0 0;"));
 ok("窄屏 .ust-root 同步收敛", c.includes(".ust-root { padding-top: 8px; }"));
 ok("弹窗主体同样上内边距归零", c.includes(".ust-panelBody{flex:1 1 auto;min-height:0;overflow:auto;padding:0 24px 20px}"));

@@ -57,7 +57,7 @@ body[data-ds-dark-theme] .ust-root {
 /* ── 排版层级 ────────────────────────────────────────────── */
 .ust-page-title { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.25; letter-spacing: -.01em; color: var(--ink); }
 .ust-h2 { margin: 0; font-size: 15px; font-weight: 650; line-height: 1.3; letter-spacing: -.005em; color: var(--ink); }
-.ust-sub { margin: 3px 0 0; font-size: 12px; line-height: 1.45; color: var(--muted); }
+.ust-sub { margin: 3px 0 0; font-size: 11px; line-height: 1.45; color: var(--muted); }
 .ust-src { margin: 12px 0 0; font-size: 10px; font-weight: 600; line-height: 1.4; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
 
 /* ── 顶部：标题 + 时间范围 ───────────────────────────────── */
@@ -298,17 +298,31 @@ body[data-ds-dark-theme] .ust-tab.active { background: var(--ink); color: #19191
 .ust-dlgSumLab { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .ust-dlgSumVal { margin-top: 3px; font-size: 17px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
 
-/* ── 底部：页脚 + 按钮 ─────────────────────────────────── */
+/* ── 底部：页脚 + 按钮（吸附滚动容器最底部） ───────────── */
 .ust-footer {
-/* 底部自动刷新控件 */
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  /* 负外边距吃掉 .ust-pageBody 的左右 32px，使页脚通栏；底部间距由自身 padding 承担 */
+  margin: 4px -32px 0;
+  padding: 12px 32px 24px;
+  /* 与 .ust-header 同款：不透明底 + 玻璃层，滚动内容不透出 */
+  background-color: var(--surface);
+  background-image: linear-gradient(var(--dsw-alias-bg-layer-2, transparent), var(--dsw-alias-bg-layer-2, transparent));
+  border-top: 1px solid var(--dsw-alias-border-l1, rgba(0,0,0,.08));
+}
+body[data-ds-dark-theme] .ust-footer {
+  background-color: var(--surface);
+  background-image: linear-gradient(var(--dsw-alias-bg-layer-2, transparent), var(--dsw-alias-bg-layer-2, transparent));
+  border-top-color: rgba(255,255,255,.08);
+}
+/* 底部自动刷新控件（此前误嵌进 .ust-footer 声明块内，整组样式实际失效，现移出） */
 .ust-auto { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .ust-autoToggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; user-select: none; }
 .ust-autoCheck { width: 14px; height: 14px; margin: 0; accent-color: var(--ink); cursor: pointer; }
 .ust-autoSeg { display: flex; align-items: center; gap: 2px; }
 .ust-autoSeg .ust-tab { font-size: 12px; }
-	display: flex; align-items: center; justify-content: space-between; gap: 16px;
-	margin-top: 4px; padding-top: 16px; border-top: 1px solid var(--rule);
-}
 .ust-meta { font-size: 12px; line-height: 1.5; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ust-actions { display: flex; justify-content: flex-end; }
 .ust-btn {
@@ -464,7 +478,7 @@ body[data-ds-dark-theme] .ust-pgBtn.is-active { background: #EDECE7; color: #1A1
 .ust-pageSub { margin: 2px 0 0; font-size: 12px; color: var(--dsw-alias-label-tertiary, #86857F); }
 /* 上内边距必须为 0：sticky 的 .ust-header 会被滚动容器的上内边距顶住，
    「下滑固定」后与上方标题之间会留着一道透出内容的缝。间距改由 .ust-root 的 padding-top 承担。 */
-.ust-pageBody { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 32px 24px; }
+.ust-pageBody { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 32px 0; }
 /* 窄屏：横向留白收敛到 16px，避免内容被过度挤压 */
 @media (max-width: 900px) {
   .ust-pageHead { padding-left: 16px; padding-right: 16px; }
