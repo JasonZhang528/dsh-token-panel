@@ -120,7 +120,7 @@ ok("按天输出会话明细", h.includes("const sessions = [...(d.bySession || 
 ok("按天输出供应商明细", h.includes("const providers = [...(d.byProvider || new Map()).entries()]"));
 ok("按天输出消息数", h.includes("messages: d.messages"));
 ok("会话名取自 session/title 事件", h.includes('case "session/title":') && h.includes("sessionTitle = ev.data.title.trim()"));
-ok("缓存带 schemaVersion", h.includes("const CACHE_SCHEMA_VERSION = 3") && h.includes("schemaVersion: CACHE_SCHEMA_VERSION"));
+ok("缓存带 schemaVersion", h.includes("const CACHE_SCHEMA_VERSION = 4") && h.includes("schemaVersion: CACHE_SCHEMA_VERSION"));
 ok("旧 schemaVersion 缓存不采用", h.includes("j.schemaVersion === CACHE_SCHEMA_VERSION"));
 
 section("客户端：日期范围过滤（Token用量统计以下）");
@@ -135,7 +135,7 @@ ok("会话名为主、id 为副", c.includes("ust-tblId") && c.includes('classNa
 ok("会话统计副标题按窗口", c.includes('(wnd.id === "all" ? "全部历史" : wnd.label) + "会话的 Token 用量与会话内模型明细"'));
 ok("供应商副标题按窗口", c.includes('(wnd.id === "all" ? "全部历史" : wnd.label) + "按 API 提供商汇总，含各家模型明细"'));
 ok("热力图副标题重写", c.includes('"一块 = 一天，颜色越深 = 当日 Token 越多 · 活跃 " + model.activeDays + " 天"'));
-ok("热力图副标题含峰值日期", c.includes('fmtDayLabel(model.peak.key)'));
+ok("热力图副标题含峰值日期", c.includes('fmtDayLabel(peakCell.key)'));
 ok("粘性栏底色为两层（不透底）", c.includes("background-color: var(--surface);") && c.includes("linear-gradient(var(--dsw-alias-bg-layer-2, transparent)"));
 const darkHeaderRule = /body\[data-ds-dark-theme\] \.ust-header \{[^}]*background-color: var\(--surface\)[^}]*linear-gradient\(var\(--dsw-alias-bg-layer-2, transparent\)/.test(c);
 ok("深色同样两层底色", darkHeaderRule);
@@ -208,6 +208,28 @@ ok("零用量柱不标数值", c.includes('!(v.total > 0)'));
 ok("标签样式已定义", c.includes('.ust-bar-val {') && c.includes('stroke: var(--surface); stroke-width: 2.5px;'));
 ok("峰值判定提前", c.indexOf('let peakIdx = 0, peakVal = -1;') < c.indexOf('const bars = values.map'));
 
+section("宿主：时长 / 工具 / Skill / MCP 统计");
+ok("核心工具白名单", h.includes("const CORE_TOOLS = new Set([") && h.includes('"run_code"'));
+ok("分段活跃时长口径", h.includes("const SEGMENT_GAP_MS = 30 * 60 * 1000;") && h.includes("function activeMsOf(times)"));
+ok("MCP server 归并", h.includes("function mcpServerOf(name)"));
+ok("消费 PTC 内层工具", h.includes('case "tool/ptc-dispatch-start"') && h.includes("pluginCounts.set"));
+ok("会话行下发时长", h.includes("durationMs: activeMsOf(sessMsgTimes)"));
+ok("按天下发时长", h.includes("durationMs: activeMsOf(d.msgTimes)"));
+ok("洞察与三榜下发", h.includes("topPlugins: topOf(s.pluginCounts)") && h.includes("topMcp: topOf(s.mcpCounts)") && h.includes("topSkills: topOf(s.skillCounts)"));
+
+section("客户端：时长列 / 洞察 / 三榜");
+ok("时长格式化", c.includes("function fmtDuration(ms)") && c.includes("function fmtDurationShort(ms)"));
+ok("会话表含时长列", c.includes('element("th", { className: "ust-tblNum" }, "时长")') && c.includes("fmtDuration(r.durationMs)"));
+ok("洞察默认收起", c.includes("function Insights({ insights, sessionCount, messageCount })") && c.includes("const [open, setOpen] = react.useState(false);"));
+ok("洞察按钮居中且双箭头", c.includes("ust-insight-toggle") && c.includes("ust-insight-chev") && c.includes('element("span", null, "›")'));
+ok("三榜 TOP5", c.includes("function TopBoards({ insights })") && c.includes('col("最常用插件"') && c.includes('col("最常用 MCP"') && c.includes('col("最常用 Skill"'));
+ok("三榜挂载在会话统计之后", c.indexOf("element(SessionsView,") < c.indexOf("element(TopBoards, { insights: data.insights })"));
+
+section("客户端：热力图指标与三视图");
+ok("Token/时长单选", c.includes('["token", "Token"], ["time", "时长"]') && c.includes("setMetric(id)"));
+ok("每日/每周/累计三视图", c.includes('["day", "每日"], ["week", "每周"], ["cum", "累计"]') && c.includes("function HeatTrend({ cells, metric, fmtMetric, view })"));
+ok("提示随指标切换", c.includes("fmtMetric(metricOf(c0))") && c.includes("view === \"cum\" ? \"累计 \" : \"本周 \""));
+
 section("客户端：模型配色统一");
 ok("共享配色序号", c.includes("function modelRanksIn(days, wnd)") && c.includes("function colorVarFor(model, ranks)"));
 ok("会话色点用共享序号", c.includes('title: m.model + "：" + fmtLarge(m.total), style: { background: colorVarFor(m.model, ranks) }'));
@@ -237,11 +259,11 @@ section("客户端：表头与数据列严格对应");
   const sessPart = c.slice(sessIdx, sessIdx + 4000);
   const sessTh = [...sessPart.matchAll(/element\("th", \{ className: "ust-tblNum" \}, "([^"]+)"\)/g)].map((m) => m[1]);
   const sessTd = [...sessPart.matchAll(/element\("td", \{ className: "ust-tblNum" \}, (fmtLarge\(r\.\w+\)|fmtPct\(hitRateOf\(r\)\))/g)].map((m) => m[1]);
-  ok("会话表表头数值列齐全", JSON.stringify(sessTh) === JSON.stringify(["轮次", "消息", "输入", "输出", "缓存命中", "总量", "命中率", "占比"]));
+  ok("会话表表头数值列齐全", JSON.stringify(sessTh) === JSON.stringify(["轮次", "消息", "时长", "输入", "输出", "缓存命中", "总量", "命中率", "占比"]));
   // 数据行前面还有「会话名 + 轮次 + 消息」3 格，故 fmtLarge 系列从第 4 个数值格起、与表头第 3~7 项对应
-  ok("会话表缓存命中列对齐", sessTh[4] === "缓存命中" && sessTd[2] === "fmtLarge(r.cacheRead)");
-  ok("会话表总量列对齐", sessTh[5] === "总量" && sessTd[3] === "fmtLarge(r.total)");
-  ok("会话表命中率列对齐", sessTh[6] === "命中率" && sessTd[4] === "fmtPct(hitRateOf(r))");
+  ok("会话表缓存命中列对齐", sessTh[5] === "缓存命中" && sessTd[2] === "fmtLarge(r.cacheRead)");
+  ok("会话表总量列对齐", sessTh[6] === "总量" && sessTd[3] === "fmtLarge(r.total)");
+  ok("会话表命中率列对齐", sessTh[7] === "命中率" && sessTd[4] === "fmtPct(hitRateOf(r))");
 }
 
 section("客户端：用量列统一口径与次序");

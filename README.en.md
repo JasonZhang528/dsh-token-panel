@@ -39,10 +39,12 @@ Dark theme: <img src="assets/panel-dark.png" width="600" alt="Dark theme">
 |------|------|
 | 🧭 **Native menu** | A native menu row directly below "Plugins" in the sidebar, styled exactly like the built-in entries; clicking it opens a main-area page |
 | 📅 **Time range** | Today / Yesterday / Last 7 days / Last 30 days / This month / Last month / All / Custom (with start–end validation); **defaults to Today**; the date bar freezes flush against the title while scrolling, and every query below it follows the selected range |
-| 🔥 **Activity heatmap** | The header row carries last-year highlights (total / active days / peak) plus a "less → more" colour scale; GitHub contribution grid: week columns × weekday rows, five color levels by daily usage, months separated by gaps, covering the last year |
+| 🔥 **Activity heatmap** | **Token / duration** metric radio plus **daily / weekly / cumulative** view switch; tooltips follow the selected metric; the header row carries last-year highlights (total / active days / peak, metric-aware) and a "less → more" colour scale; GitHub contribution grid: week columns × weekday rows, five color levels, months separated by gaps, covering the last year |
 | 📈 **Usage trend** | Stacked bars: one bar per model, height = usage, **each bar labelled with its value**; **the X axis ticks every point** (scrolls horizontally instead of thinning); the hover tooltip follows the mouse; legend toggles series |
 | 🍩 **Model usage** | Dial gauge: 100 ticks = 100%, an anchor every 10 ticks; occupies 40% width, and the labelled breakdown beside it lists input / output / cache hits / total / hit rate / share; **dots match the bar chart and legend colours** |
-| 📊 **Session stats** | Per session: name / turns / messages / input / output / cache hits / total / hit rate / share / model breakdown / last activity, **paginated beyond 10 rows**; **click any row** for that session's per-model usage and hit rate (also paginated beyond 10 models) |
+| 📊 **Session stats** | Per session: name / turns / messages / **duration** / input / output / cache hits / total / hit rate / share / model breakdown / last activity, **paginated beyond 10 rows**; **click any row** for that session's per-model usage and hit rate (also paginated beyond 10 models) |
+| 💡 **Activity insights** | Collapsible panel below the overview metrics, **collapsed by default**; the centred button carries two downward chevrons that flip up when expanded. Reports chat count / messages / tool calls / distinct tools / skills used / MCP used |
+| 🏆 **Top 5 boards** | One row of three columns below session stats: **top plugins** (non-core tools), **top MCP** (merged by server) and **top skills** (parsed from the `skill` call arguments), five entries each with call counts |
 | 🔌 **Provider stats** | Aggregated by API provider: input / output / cache hits / total / hit rate / share / model breakdown; **click any row** for that provider's per-model usage and hit rate (also paginated beyond 10 models), **paginated beyond 10 rows** |
 | 🧮 **Top metrics** | Total tokens / peak day / longest session / current streak / longest streak |
 | ♻️ **Auto refresh** | On by default at 5 seconds (options: 5 / 10 / 30 / 60 seconds); **the page renders first and then fetches**, so a cold start never freezes |
@@ -68,7 +70,9 @@ Restart DSH, then click **用量统计** in the sidebar.
 
 - Switch the time range at the top; **All** shows everything since you started.
 - Hover the trend chart for per-model figures; click the legend to toggle a model.
-- Pagination controls appear under the session and provider tables beyond 10 rows.
+- The heatmap switches between the **Token / duration** metrics and the **daily / weekly / cumulative** views; hover a cell or bar for its value.
+- **Activity insights** below the overview metrics is collapsed by default; click to expand the tool / skill / MCP figures.
+- Pagination controls appear under the session and provider tables beyond 10 rows; **click any row** for its model breakdown.
 - **Refresh** forces a full rescan; auto refresh pulls every 5 seconds by default.
 
 ## ⚙️ How it works
@@ -109,6 +113,10 @@ Client: hand-written SVG rendered 1:1 at the measured container width
 | Provider attribution | The `provider` field on `request/context` events, folded into `other` when absent |
 | Session attribution | Accumulated per session file; only sessions with usage are listed |
 | Active day | A day with at least one usage event; streaks are derived from adjacent active days |
+| Active duration | Segmented-active definition: consecutive messages more than **30 minutes** apart start a new segment, and segment lengths are summed (idle gaps excluded). The top "longest session" card and the per-session duration column share this definition |
+| Tools and plugins | Both the outer `tool/call` and the PTC inner `tool/ptc-dispatch-start` events are consumed (in PTC mode the outer call is usually `run_code`, so counting it alone would be misleading); **non-core tools** count as plugins |
+| MCP | Tool names of the form `mcp__<server>__<tool>` are merged to the server level |
+| Skills | Parsed from the `arguments.name` of the `skill` tool call; falls back to a generic name when the arguments are not JSON |
 
 ## ✅ Acceptance tests
 
@@ -158,4 +166,13 @@ dsh-token-panel/
 MIT License.
 
 Based on [Amer-CN/zcode-usage-stats](https://github.com/Amer-CN/zcode-usage-stats) (MIT), reworked from a **settings page** into a **native sidebar menu plus main-area page**, with a GitHub-style heatmap, session and provider breakdowns, pagination, and auto refresh added.
+
+### Reference implementations
+
+| Project | What was borrowed |
+|---------|-------------------|
+| [Amer-CN/zcode-usage-stats](https://github.com/Amer-CN/zcode-usage-stats) | This project's origin: the settings-page view, base aggregation and chart skeleton |
+| [jiamuAi/dsh-token-usage](https://github.com/jiamuAi/dsh-token-usage) | The **active-duration definition** (segments split at gaps over 30 minutes), **activity insights** (tool / skill / MCP statistics), **plugin and skill top-5 boards**, and **multi-view heatmap** (daily / weekly / cumulative) |
+
+> These borrowings are at the level of **ideas and metric definitions**. The implementation here (aggregation code, SVG charts, styles and tests) is written independently; no source code was copied. Thanks to both authors for sharing their work.
 

@@ -442,6 +442,59 @@ body[data-ds-dark-theme] .ust-gh-lv4 { fill: #7CC4F0; }
 .ust-gh-stat-val { margin-top: 2px; font-size: 15px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ust-block-head .ust-gh-scale { margin: 0 0 0 auto; }
 .ust-gh-sw { width: 11px; height: 11px; border-radius: 2.5px; display: inline-block; }
+
+/* ── 热力图：指标单选 + 视图切换 + 每周/累计图 ───────────── */
+.ust-gh-metric, .ust-gh-views { display: inline-flex; align-items: center; gap: 2px; }
+.ust-gh-metric { padding: 2px; border: 1px solid var(--rule); border-radius: 999px; }
+.ust-gh-mbtn, .ust-gh-vbtn {
+	font-family: inherit; font-size: 11px; font-weight: 600; line-height: 1.4;
+	padding: 3px 10px; border: 0; border-radius: 999px; cursor: pointer;
+	background: transparent; color: var(--muted);
+}
+.ust-gh-vbtn { padding: 3px 8px; border-radius: 6px; }
+.ust-gh-mbtn:hover, .ust-gh-vbtn:hover { background: var(--hover); color: var(--ink); }
+.ust-gh-mbtn.active, .ust-gh-vbtn.active { background: var(--ink); color: var(--surface); }
+body[data-ds-dark-theme] .ust-gh-mbtn.active, body[data-ds-dark-theme] .ust-gh-vbtn.active { background: var(--ink); color: #191918; }
+.ust-gh-base { stroke: var(--rule); stroke-width: 1; }
+.ust-gh-bar { fill: var(--c3); }
+.ust-gh-line { stroke: var(--c3); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ust-gh-tip { margin-top: 6px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: center; }
+
+/* ── 活动洞察（默认收起） ────────────────────────────────── */
+.ust-insight { margin: 4px 0 14px; }
+.ust-insight-toggle {
+	display: flex; align-items: center; justify-content: center; gap: 8px;
+	width: 100%; padding: 7px 12px; font-family: inherit; font-size: 12px; font-weight: 600;
+	color: var(--muted); background: transparent; border: 1px solid var(--rule);
+	border-radius: 8px; cursor: pointer;
+}
+.ust-insight-toggle:hover { background: var(--hover); color: var(--ink); }
+/* 两枚向下的 chevron：展开时整体翻转朝上 */
+.ust-insight-chev { display: inline-flex; gap: 1px; transform: rotate(90deg); transition: transform .18s ease; }
+.ust-insight.is-open .ust-insight-chev { transform: rotate(-90deg); }
+.ust-insight-body {
+	display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 2px 24px; margin-top: 10px; padding: 12px 14px;
+	border: 1px solid var(--rule); border-radius: 8px;
+}
+.ust-insight-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 5px 0; }
+.ust-insight-k { font-size: 12px; color: var(--muted); }
+.ust-insight-v { font-size: 12.5px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ── 插件 / MCP / Skill 三榜 TOP5 ────────────────────────── */
+.ust-top { display: flex; gap: 32px; flex-wrap: wrap; }
+.ust-top-col { flex: 1 1 240px; min-width: 0; }
+.ust-top-title { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+.ust-top-row { display: flex; align-items: baseline; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--rule); }
+.ust-top-row:last-child { border-bottom: 0; }
+.ust-top-rank {
+	flex: none; width: 16px; height: 16px; border-radius: 4px; text-align: center;
+	font-size: 10px; font-weight: 700; line-height: 16px;
+	color: var(--muted); background: var(--hover);
+}
+.ust-top-name { flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ust-top-count { flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ust-top-empty { font-size: 12px; color: var(--faint); padding: 6px 0; }
 .ust-gh-legend { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
 .ust-gh-note { font-size: 12px; color: var(--muted, #5F5E59); font-variant-numeric: tabular-nums; }
 
