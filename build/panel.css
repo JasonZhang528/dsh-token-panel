@@ -385,6 +385,7 @@ body[data-ds-dark-theme] .ust-date::-webkit-calendar-picker-indicator { filter: 
 	border-radius: 8px;
 }
 .ust-tip-title { font-weight: 700; }
+.ust-tip-head { margin-top: 2px; font-weight: 700; }
 .ust-tip-body { margin-top: 2px; opacity: .75; }
 .ust-tip-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 5px; }
 .ust-tip-row:first-of-type { margin-top: 7px; }
@@ -453,11 +454,31 @@ body[data-ds-dark-theme] .ust-gh-mbtn.active, body[data-ds-dark-theme] .ust-gh-v
 .ust-gh-base { stroke: var(--rule); stroke-width: 1; }
 .ust-gh-bar { fill: var(--c3); }
 .ust-gh-line { stroke: var(--c3); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.ust-gh-tip { margin-top: 6px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: center; }
 /* 每周 / 累计图上的数值标注 */
 .ust-gh-val { font-size: 9.5px; font-weight: 600; fill: var(--muted); paint-order: stroke; stroke: var(--surface); stroke-width: 2px; }
 /* 色阶移到底部后居中显示，与图表同宽 */
 .ust-gh-scale--foot { justify-content: center; margin-top: 10px; }
+
+/* ── 热力图：左控右图，同一水平线 ─────────────────────────── */
+/* 控件组从标题行移到图表左侧，标题行不再被挤压，栅格图取回横向空间 */
+.ust-gh-layout { display: flex; align-items: flex-start; gap: 16px; }
+.ust-gh-chart { flex: 1 1 auto; min-width: 0; }
+.ust-gh-panel { flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; }
+.ust-gh-panelRow { display: flex; align-items: center; gap: 8px; }
+/* 控件组标签：字号跟随说明文字，不抢视觉 */
+.ust-gh-panelLab { font-size: 11px; color: var(--muted); white-space: nowrap; }
+/* 窄容器：控件区落到图表下方，避免把网格压出横向滚动 */
+@media (max-width: 720px) {
+  .ust-gh-layout { flex-direction: column; gap: 10px; }
+  .ust-gh-panel { flex-direction: row; flex-wrap: wrap; gap: 8px 16px; }
+}
+/* 图例置底：五档颜色逐步加深，每档旁标出数值区间 */
+.ust-gh-scale--foot { justify-content: center; align-items: center; flex-wrap: wrap; margin-top: 10px; gap: 4px 6px; }
+.ust-gh-scale-item { display: inline-flex; align-items: center; gap: 4px; }
+/* 数值区间：字号比色块标签略小，等宽数字保证各档宽度一致 */
+.ust-gh-scale-val { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 结构化提示：多行分组，行与行之间留出呼吸空间 */
+.ust-tip-block .ust-tip-row:first-of-type { margin-top: 7px; }
 
 /* ── 活动洞察（默认收起） ────────────────────────────────── */
 .ust-insight { margin: 4px 0 14px; }
@@ -487,11 +508,18 @@ body[data-ds-dark-theme] .ust-gh-mbtn.active, body[data-ds-dark-theme] .ust-gh-v
 .ust-top-title { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
 .ust-top-row { display: flex; align-items: baseline; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--rule); }
 .ust-top-row:last-child { border-bottom: 0; }
+/* 序号徽标：前三名以金银铜底色分出梯队，其余保持中性底 */
 .ust-top-rank {
-	flex: none; width: 16px; height: 16px; border-radius: 4px; text-align: center;
-	font-size: 10px; font-weight: 700; line-height: 16px;
+	flex: none; width: 18px; height: 18px; border-radius: 5px; text-align: center;
+	font-size: 10.5px; font-weight: 700; line-height: 18px;
 	color: var(--muted); background: var(--hover);
 }
+.ust-top-rank.is-gold { color: #6B4E00; background: #F2C94C; }
+.ust-top-rank.is-silver { color: #4A4E52; background: #D7DBDF; }
+.ust-top-rank.is-bronze { color: #6E3A1D; background: #E0A878; }
+body[data-ds-dark-theme] .ust-top-rank.is-gold { color: #1E1600; background: #E8C547; }
+body[data-ds-dark-theme] .ust-top-rank.is-silver { color: #23262A; background: #C3C9CF; }
+body[data-ds-dark-theme] .ust-top-rank.is-bronze { color: #2A130A; background: #CE9464; }
 .ust-top-name { flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ust-top-count { flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ust-top-empty { font-size: 12px; color: var(--faint); padding: 6px 0; }
@@ -518,6 +546,17 @@ body[data-ds-dark-theme] .ust-tbl th, body[data-ds-dark-theme] .ust-tbl td { bor
 .ust-dot + .ust-dot { margin-left: 4px; }
 .ust-tblSub { color: var(--muted, #5F5E59); font-size: 12px; font-weight: 400; }
 .ust-ellip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+
+/* 供应商单元格：logo 徽标 + 名称同行 */
+.ust-provCell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* 徽标：首字母取供应商主题色，白字保证对比度 */
+.ust-provLogo {
+	flex: none; display: inline-flex; align-items: center; justify-content: center;
+	width: 22px; height: 22px; border-radius: 6px;
+	font-size: 11px; font-weight: 700; line-height: 1;
+	color: #FFFFFF; text-shadow: 0 0 1px rgba(0,0,0,.35);
+	user-select: none;
+}
 
 /* ── 分页控件 ── */
 .ust-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; }

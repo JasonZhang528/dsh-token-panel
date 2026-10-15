@@ -359,6 +359,35 @@ window.__ModuleLoader__.load({
 			return list.sort((a, b) => b.total - a.total);
 		}
 
+		// 按窗口聚合「活动洞察」计数：合并窗口内各天的工具 / 插件 / Skill / MCP 计数。
+		// all 视图无 dateKeys，退回全历史口径（data.insights）。
+		function insightsIn(days, wnd, all) {
+			const keys = wnd.dateKeys || [];
+			if (!keys.length) return all || {};
+			const merge = (list, box) => (list || []).forEach((it) => box.set(it.name, (box.get(it.name) || 0) + (it.count || 0)));
+			const box = { tools: new Map(), plugins: new Map(), skills: new Map(), mcp: new Map() };
+			fillDays(days, wnd).forEach((d) => {
+				if (!d.insights) return;
+				merge(d.insights.tools, box.tools);
+				merge(d.insights.plugins, box.plugins);
+				merge(d.insights.skills, box.skills);
+				merge(d.insights.mcp, box.mcp);
+			});
+			const top = (m, n = 5) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([name, count]) => ({ name, count }));
+			return {
+				totalToolCalls: [...box.tools.values()].reduce((a, b) => a + b, 0),
+				distinctTools: box.tools.size,
+				totalSkillUses: [...box.skills.values()].reduce((a, b) => a + b, 0),
+				distinctSkills: box.skills.size,
+				totalMcpCalls: [...box.mcp.values()].reduce((a, b) => a + b, 0),
+				distinctMcp: box.mcp.size,
+				topPlugins: top(box.plugins),
+				topSkills: top(box.skills),
+				topMcp: top(box.mcp),
+				topTools: top(box.tools),
+			};
+		}
+
 		// ---------- 指标 ----------
 		function Metric({ icon, label, value, sub, text }) {
 			return element("div", { className: "ust-metric" },
@@ -399,6 +428,20 @@ window.__ModuleLoader__.load({
 			return [place, clear, el];
 		}
 
+		// ---------- 提示行：左「标签」右「数值」，与表格列宽同基准，扫读不必猜 ----------
+		// 每个数值都配一行说明（是什么 + 精确值），不放「裸数字」——
+		// 提示框停留时间短，读者没有余力在数字与含义之间做二次映射。
+		function tipRow(label, value) {
+			return element("div", { key: label, className: "ust-tip-row" },
+				element("span", { className: "ust-tip-key" }, element("span", null, label)),
+				element("span", { className: "ust-tip-val" }, value));
+		}
+		// 提示分组小标题：同组多行（如各模型分项）时用来分段
+		function tipHead(label) {
+			return element("div", { key: "h" + label, className: "ust-tip-head" }, label);
+		}
+
+
 		// ---------- 1) 活跃热力图 ----------
 		// 日历点阵：一格一天，点面积 = 当天用量（sqrt 换算，面积才与数值成正比）
 		// 只保留「每日」一种展示：一格一天
@@ -411,6 +454,58 @@ window.__ModuleLoader__.load({
 			// 指标：token 用量 / 活跃时长；视图：每日格 / 每周柱 / 累计线
 			const [metric, setMetric] = react.useState("token");
 			const [view, setView] = react.useState("day");
+		const [placeTip, clearTip, tipEl] = useTip();
+		const isTime = metric === "time";
+		// 提示文案：把一格背后的每个口径逐行列出，标签 + 精确值。
+		// 不写「裸数字」——Token 给千分位全量，时长给出可读拆解，
+		// 读者不必在心里换算，也不必回去翻副标题。
+		const dayTip = (c0) => [
+			// 小标题与行标签同一套文案（Token 用量 / 活跃时长），读提示时不必换词
+			tipHead(fmtDayLabel(c0.key)),
+			isTime
+				? tipRow("活跃时长", fmtDuration(c0.durationMs))
+				: tipRow("Token 用量", fmtFull(c0.total) + " tokens"),
+			tipRow("轮次", String(c0.turns || 0) + " 次"),
+			// 累计口径只在有意义时给出：首日之前没有累计值
+			c0.cum !== undefined
+				? tipRow("年内累计", isTime ? fmtDuration(c0.cum) : fmtFull(c0.cum) + " tokens")
+				: null,
+		].filter(Boolean);
+		// 悬停：命中层不改变视觉，只负责把提示挂到鼠标处。
+		// 用原生事件委托而非 React 合成 onMouseEnter：委托在 svg 容器上收
+		// mouseover/mouseout,真实鼠标移动与自动化派发两种来源都稳定触发。
+		const gridRef = react.useRef(null);
+		react.useEffect(() => {
+			const el = gridRef.current;
+			if (!el) return;
+			const pickCell = (t) => {
+				let n = t;
+				while (n && n !== el) {
+					if (n.classList && n.classList.contains("ust-hitcell")) return n;
+					n = n.parentNode;
+				}
+				return null;
+			};
+			let lastKey = null;
+			const over = (e) => {
+				const cellEl = pickCell(e.target);
+				if (!cellEl || cellEl.getAttribute("data-key") === lastKey) return;
+				lastKey = cellEl.getAttribute("data-key");
+				const c0 = model.cells.find((x) => x.key === lastKey);
+				if (c0) onEnter(e, c0);
+			};
+			const out = (e) => {
+				if (pickCell(e.target)) { lastKey = null; onLeave(); }
+			};
+			el.addEventListener("mouseover", over);
+			el.addEventListener("mouseout", out);
+			return () => {
+				el.removeEventListener("mouseover", over);
+				el.removeEventListener("mouseout", out);
+			};
+		});
+		const onEnter = (e, c0) => placeTip(e, element("div", { className: "ust-tip-block" }, dayTip(c0)));
+		const onLeave = () => clearTip();
 			const metricOf = react.useCallback(
 				(c) => (metric === "time" ? (c.durationMs || 0) : (c.total || 0)),
 				[metric],
@@ -497,6 +592,15 @@ window.__ModuleLoader__.load({
 			const wdAxis = [1, 3, 5].map((k) =>
 				element("text", { key: "wd" + k, className: wdKey, x: 0, y: cy(k) + CELL - 2.5, textAnchor: "start" }, WD[k]));
 
+			// 五档色阶的数值区间：颜色深浅对应可读的量，不必猜。
+			// 分档口径与 level() 完全一致（12% / 33% / 66% 峰值），避免图例与格子脱节。
+			const legendRanges = (() => {
+				if (!(peakMetric > 0)) return null;
+				const fmtV = (v) => (metric === "time" ? fmtDurationShort(v) : fmtLarge(v));
+				const b1 = peakMetric * 0.12, b2 = peakMetric * 0.33, b3 = peakMetric * 0.66;
+				return ["无", "≤ " + fmtV(b1), fmtV(b1) + " – " + fmtV(b2), fmtV(b2) + " – " + fmtV(b3), "> " + fmtV(b3)];
+			})();
+
 			return element("div", { className: "ust-block" },
 				element("div", { className: "ust-block-head" },
 					element("div", { className: "ust-block-titleRow" },
@@ -510,69 +614,113 @@ window.__ModuleLoader__.load({
 								? element("span", null, " · 峰值 " + (metric === "time" ? fmtDuration(peakMetric) : fmtLarge(peakMetric)) + "（" + fmtDayLabel(peakCell.key) + "）")
 								: null,
 						),
-						// 指标单选：Token 用量 / 活跃时长
-						element("div", { className: "ust-gh-metric", role: "radiogroup", "aria-label": "热力图指标" },
-							[["token", "Token"], ["time", "时长"]].map(([id, label]) =>
-								element("button", {
-									key: id, type: "button", role: "radio", "aria-checked": metric === id,
-									className: "ust-gh-mbtn" + (metric === id ? " active" : ""),
-									onClick: () => setMetric(id),
-								}, label)),
-						),
-						// 视图切换：每日 / 每周 / 累计
-						element("div", { className: "ust-gh-views", role: "tablist", "aria-label": "热力图视图" },
-							[["day", "每日"], ["week", "每周"], ["cum", "累计"]].map(([id, label]) =>
-								element("button", {
-									key: id, type: "button", role: "tab", "aria-selected": view === id,
-									className: "ust-gh-vbtn" + (view === id ? " active" : ""),
-									onClick: () => setView(id),
-								}, label)),
-						),
 					),
 				),
-				view === "day"
-					// ── 每日视图：GitHub 贡献格 ──
-					? element("div", { className: "ust-gh-wrap" },
-						element("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "活跃热力图（每日）", style: { margin: "0 auto" } },
-							wdAxis,
-							monthMarks.map((m0) => element("g", { key: "m" + m0.col },
-								element("text", { className: wdKey, x: cx(m0.col), y: PAD_T - 8, textAnchor: "start" }, m0.month + "月"),
-							)),
-							model.cells.map((c0) => element("rect", {
-								key: c0.key,
-								className: "ust-gh-cell ust-gh-lv" + level(metricOf(c0)) + (c0.isToday ? " is-today" : ""),
-								x: cx(c0.col), y: cy(c0.row), width: CELL, height: CELL, rx: 2.5,
-								children: element("title", null, fmtDayLabel(c0.key) + " · " + fmtMetric(metricOf(c0))),
-							})),
+				// 布局：左控件组、右热力图，同一水平线；控件不再占标题行宽度
+				element("div", { className: "ust-gh-layout" },
+					element("div", { className: "ust-gh-panel" },
+						element("div", { className: "ust-gh-panelRow" },
+							element("span", { className: "ust-gh-panelLab" }, "指标"),
+							element("div", { className: "ust-gh-metric", role: "radiogroup", "aria-label": "热力图指标" },
+								[["token", "Token"], ["time", "时长"]].map(([id, label]) =>
+									element("button", {
+										key: id, type: "button", role: "radio", "aria-checked": metric === id,
+										className: "ust-gh-mbtn" + (metric === id ? " active" : ""),
+										onClick: () => setMetric(id),
+									}, label)),
+							),
 						),
-					)
-					// ── 每周 / 累计视图：柱状与折线，共用同一套指标口径 ──
-					: element(HeatTrend, { cells: model.cells, metric: metric, fmtMetric: fmtMetric, view: view }),
-				// 色阶说明放在图表下方：颜色深浅的含义一眼可读，也不挤占标题行
-				element("div", { className: "ust-gh-scale ust-gh-scale--foot" },
-					element("span", { className: "ust-scale-lab" }, "少"),
-					[0, 1, 2, 3, 4].map((lv) => element("span", { key: lv, className: "ust-gh-sw ust-gh-lv" + lv })),
-					element("span", { className: "ust-scale-lab" }, "多"),
-				),
+						element("div", { className: "ust-gh-panelRow" },
+							element("span", { className: "ust-gh-panelLab" }, "维度"),
+							element("div", { className: "ust-gh-views", role: "tablist", "aria-label": "热力图视图" },
+								[["day", "每日"], ["week", "每周"], ["cum", "累计"]].map(([id, label]) =>
+									element("button", {
+										key: id, type: "button", role: "tab", "aria-selected": view === id,
+										className: "ust-gh-vbtn" + (view === id ? " active" : ""),
+										onClick: () => setView(id),
+									}, label)),
+							),
+						),
+					),
+					element("div", { className: "ust-gh-chart" },
+						view === "day"
+							// ── 每日视图：GitHub 贡献格 ──
+							? element("div", { className: "ust-gh-wrap" },
+								element("svg", { ref: gridRef, width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "活跃热力图（每日）", style: { margin: "0 auto" } },
+									wdAxis,
+									monthMarks.map((m0) => element("g", { key: "m" + m0.col },
+										element("text", { className: wdKey, x: cx(m0.col), y: PAD_T - 8, textAnchor: "start" }, m0.month + "月"),
+									)),
+									// 一格两层：下层着色、上层透明命中。命中与着色解耦，
+									// 事件由 svg 容器原生委托，格子只带 data-key。
+									model.cells.map((c0) => [
+										element("rect", {
+											key: "c" + c0.key,
+											className: "ust-gh-cell ust-gh-lv" + level(metricOf(c0)) + (c0.isToday ? " is-today" : ""),
+											x: cx(c0.col), y: cy(c0.row), width: CELL, height: CELL, rx: 2.5,
+										}),
+										element("rect", {
+											key: "h" + c0.key,
+											className: "ust-hitcell",
+											"data-key": c0.key,
+											x: cx(c0.col), y: cy(c0.row), width: CELL, height: CELL,
+											children: element("title", null, fmtDayLabel(c0.key) + " · " + fmtMetric(metricOf(c0))),
+										}),
+									]),
+								),
+							)
+							// ── 每周 / 累计视图：柱状与折线，共用同一套指标口径 ──
+							: element(HeatTrend, {
+								cells: model.cells, metric: metric, fmtMetric: fmtMetric, view: view,
+								tipRow: tipRow, tipHead: tipHead, fmtDayLabel: fmtDayLabel, fmtDuration: fmtDuration,
+								placeTip: placeTip, clearTip: clearTip,
+							}),
+							// 图例置底：颜色逐步加深，每档旁标出数值区间。
+							// 格子视图用五档色阶；每周柱 / 累计折线是单色，改给单色图例，避免误导。
+							view === "day"
+								? element("div", { className: "ust-gh-scale ust-gh-scale--foot" },
+									element("span", { className: "ust-scale-lab" }, "少"),
+									[0, 1, 2, 3, 4].map((lv) => element("span", {
+										key: lv, className: "ust-gh-scale-item",
+										title: legendRanges ? legendRanges[lv] : "",
+									},
+										element("span", { className: "ust-gh-sw ust-gh-lv" + lv }),
+										legendRanges ? element("span", { className: "ust-gh-scale-val" }, legendRanges[lv]) : null,
+									)),
+									element("span", { className: "ust-scale-lab" }, "多"),
+								)
+								: element("div", { className: "ust-gh-scale ust-gh-scale--foot" },
+									element("span", { className: "ust-gh-sw", style: { background: "var(--c3)" } }),
+									element("span", { className: "ust-gh-scale-val" },
+										(metric === "time" ? "时长" : "Token") + (view === "cum" ? " · 累计折线" : " · 每周柱形")),
+									),
+								),
+					),
+					tipEl,
 			);
 		}
 		// ---------- 热力图：每周柱状 / 累计折线 ----------
 		// 与每日格同源（同一份 cells），切换视图不改变口径，只是换一种聚合方式
-		function HeatTrend({ cells, metric, fmtMetric, view }) {
+		function HeatTrend({ cells, metric, fmtMetric, view, tipRow, tipHead, fmtDayLabel, fmtDuration, placeTip, clearTip }) {
 			const [hover, setHover] = react.useState(null);
 			const W = 1120, H = 180, PAD_L = 54, PAD_R = 12, PAD_T = 16, PAD_B = 26;
 			const plotW = W - PAD_L - PAD_R, plotH = H - PAD_T - PAD_B;
 			const val = (c) => (metric === "time" ? (c.durationMs || 0) : (c.total || 0));
-			// 按周分组（col 即周序），累计视图则对同一序列求前缀和
+			// 按周分组（col 即周序），累计视图则对同一序列求前缀和；顺带记每周活跃天数
 			const weeks = [];
 			for (let i = 0; i < 53; i++) {
 				const inWeek = cells.filter((c) => c.col === i);
 				if (!inWeek.length) continue;
-				weeks.push({ col: i, sum: inWeek.reduce((a, c) => a + val(c), 0), first: inWeek[0], last: inWeek[inWeek.length - 1] });
+				weeks.push({
+					col: i,
+					sum: inWeek.reduce((a, c) => a + val(c), 0),
+					days: inWeek.filter((c) => val(c) > 0).length,
+					first: inWeek[0], last: inWeek[inWeek.length - 1],
+				});
 			}
 			const cum = [];
 			let run = 0;
-			weeks.forEach((w) => { run += w.sum; cum.push({ col: w.col, sum: run, first: w.first, last: w.last }); });
+			weeks.forEach((w) => { run += w.sum; cum.push({ col: w.col, sum: run, days: w.days, first: w.first, last: w.last }); });
 			const series = view === "cum" ? cum : weeks;
 			const maxV = series.reduce((m, x) => Math.max(m, x.sum), 0) || 1;
 			const step = plotW / Math.max(1, series.length);
@@ -580,9 +728,16 @@ window.__ModuleLoader__.load({
 			const yOf = (v) => PAD_T + plotH - (v / maxV) * plotH;
 			const label = (x) => (x.first.month + "/" + x.first.dom);
 			const linePath = series.map((x, i) => (i ? "L" : "M") + (PAD_L + step * (i + 0.5)).toFixed(1) + " " + yOf(x.sum).toFixed(1)).join(" ");
-			const tip = hover !== null && series[hover]
-				? fmtDayLabel(series[hover].first.key) + " 起 · " + (view === "cum" ? "累计 " : "本周 ") + fmtMetric(series[hover].sum)
-				: null;
+			// 结构化提示：与每日格同一套「小标题 + 标签行」，口径随所选指标切换
+			const isTime = metric === "time";
+			const weekTip = (x) => [
+				tipHead((view === "cum" ? "截至 " : "") + fmtDayLabel(x.last.key)),
+				isTime
+					? tipRow(view === "cum" ? "累计时长" : "活跃时长", fmtDuration(x.sum))
+					: tipRow(view === "cum" ? "累计 Token" : "Token 用量", fmtFull(x.sum) + " tokens"),
+				tipRow("区间", fmtDayLabel(x.first.key) + " – " + fmtDayLabel(x.last.key)),
+				tipRow("活跃天数", String(x.days || 0) + " 天"),
+			];
 			return element("div", { className: "ust-gh-wrap" },
 				element("svg", { width: "100%", height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": view === "cum" ? "活跃热力图（累计）" : "活跃热力图（每周）", preserveAspectRatio: "none" },
 					// 基线
@@ -596,7 +751,9 @@ window.__ModuleLoader__.load({
 							key: "b" + i, className: "ust-gh-bar",
 							x: PAD_L + step * i + (step - barW) / 2, y: yOf(x.sum), width: barW,
 							height: Math.max(1, PAD_T + plotH - yOf(x.sum)), rx: 2,
-							onMouseEnter: () => setHover(i), onMouseLeave: () => setHover(null),
+							onMouseEnter: (e) => { setHover(i); placeTip(e, element("div", { className: "ust-tip-block" }, weekTip(x))); },
+							onMouseMove: (e) => placeTip(e, element("div", { className: "ust-tip-block" }, weekTip(x))),
+							onMouseLeave: () => { setHover(null); clearTip(); },
 							children: element("title", null, label(x) + " 起 · " + (view === "cum" ? "累计 " : "本周 ") + fmtMetric(x.sum)),
 						})),
 					// 数值标注：每周标柱顶、累计标末端点；仅标非零值，避免空周刷屏
@@ -619,12 +776,19 @@ window.__ModuleLoader__.load({
 					series.map((x, i) => (x.first.dom <= 7
 						? element("text", { key: "x" + i, className: "ust-gh-axis", x: PAD_L + step * (i + 0.5), y: H - 8, textAnchor: "middle" }, x.first.month + "月")
 						: null)),
+					// 透明命中带：每周 / 累计视图逐列命中（柱与折线共用），事件与图形解耦
+					series.map((x, i) => element("rect", {
+						key: "hb" + i, className: "ust-hitband",
+						x: PAD_L + step * i, y: PAD_T, width: step, height: plotH,
+						onMouseEnter: (e) => { setHover(i); placeTip(e, element("div", { className: "ust-tip-block" }, weekTip(x))); },
+						onMouseMove: (e) => placeTip(e, element("div", { className: "ust-tip-block" }, weekTip(x))),
+						onMouseLeave: () => { setHover(null); clearTip(); },
+					})),
 				),
-				tip ? element("div", { className: "ust-gh-tip" }, tip) : null,
 			);
 		}
 		// ---------- 活动洞察（默认收起，点击展开） ----------
-		// 数据来自宿主 insights：工具 / Skill / MCP 计数与 TOP5
+		// 数据来自宿主 insights：工具 / Skill / MCP 计数与 TOP5；随日期区间筛选
 		function Insights({ insights, sessionCount, messageCount }) {
 			const [open, setOpen] = react.useState(false);
 			const ins = insights || {};
@@ -658,11 +822,13 @@ window.__ModuleLoader__.load({
 		// ---------- 三榜 TOP5（插件 / MCP / Skill） ----------
 		function TopBoards({ insights }) {
 			const ins = insights || {};
+			// 序号徽标：前三名强化（金银铜底色），其余保持中性底，一眼分出梯队
+			const rankCls = (i) => "ust-top-rank" + (i === 0 ? " is-gold" : i === 1 ? " is-silver" : i === 2 ? " is-bronze" : "");
 			// 三栏同高：用 grid 而非 flex，保证三列顶部对齐、行高一致
 			const col = (title, list) => element("div", { key: title, className: "ust-top-col" },
 				element("div", { className: "ust-top-title" }, title),
 				list.map((it, i) => element("div", { key: it.name, className: "ust-top-row" },
-					element("span", { className: "ust-top-rank" }, String(i + 1)),
+					element("span", { className: rankCls(i) }, String(i + 1)),
 					element("span", { className: "ust-top-name", title: it.name }, it.name),
 					element("span", { className: "ust-top-count" }, fmtFull(it.count) + " 次"))),
 			);
@@ -914,8 +1080,8 @@ window.__ModuleLoader__.load({
 							onClick: () => setDetail(r),
 							onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetail(r); } },
 						},
-							element("td", null, element("div", { className: "ust-tblName" },
-								element("span", { className: "ust-dot", style: { background: r.color || "var(--ink)" } }),
+							element("td", null, element("div", { className: "ust-provCell" },
+								element("span", { className: "ust-provLogo", style: { background: r.color || "var(--ink)" }, "aria-hidden": "true" }, (r.provider || "?").slice(0, 1).toUpperCase()),
 								element("span", { className: "ust-ellip", title: r.provider }, r.provider))),
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.input)),
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.output)),
@@ -1407,31 +1573,34 @@ window.__ModuleLoader__.load({
 			const winScoped = winName ? wnd.label + " · 共 " + ((data && data.sessionCount) || 0) + " 个" : "全部历史";
 			// 统计周期只有一天时，「活跃天数」「日均」恒为 1 / 等于总量，无信息量，不展示
 			const singleDayWindow = (wnd.dateKeys || []).length <= 1;
+			// 活动洞察与三榜 TOP5 跟随日期区间：窗口内逐天合并；「全部」退回全历史口径
+			const winInsights = insightsIn(days, wnd, data.insights);
 
 			return element("div", { className: "ust-root" },
 				element(SummaryMetrics, { summary: data.summary }),
 				hasData ? element(Heatmap, { days, window: wnd }) : null,
 				headerEl,
 				element("div", { className: "ust-metrics" },
-					element(Metric, { icon: element(IconToken), label: "窗口 Token", value: fmtLarge(stats.total), sub: fmtFull(stats.total) }),
 					singleDayWindow ? null : element(Metric, { icon: element(IconCalendar), label: "活跃天数", value: String(stats.activeDays) + " 天", sub: "有用量的天" }),
 					singleDayWindow ? null : element(Metric, { icon: element(IconTrend), label: "日均", value: fmtLarge(avgPerActive), sub: "按活跃天平均" }),
 					element(Metric, { icon: element(IconChat), label: "窗口会话", value: String(winStats.sessions), sub: winScoped } ),
 					element(Metric, { icon: element(IconMail), label: "窗口消息", value: fmtFull(winStats.messages), sub: "assistant/message" }),
-					element(Metric, { icon: element(IconToken), label: "缓存命中", value: fmtLarge(winStats.cacheRead), sub: fmtFull(winStats.cacheRead) + " tokens" }),
+					// 第二行统一为 TOKENS 文本（不带数字）：全量数值已在 tooltip/表格里，卡面保持干净
+					element(Metric, { icon: element(IconToken), label: "窗口 Token", value: fmtLarge(stats.total), sub: "TOKENS" }),
+					element(Metric, { icon: element(IconToken), label: "缓存命中", value: fmtLarge(winStats.cacheRead), sub: "TOKENS" }),
 					element(Metric, { icon: element(IconTrend), label: "命中率", value: fmtPct(winStats.rate), sub: "缓存命中 / 当期满量" }),
 					element(Metric, { icon: element(IconBolt), label: "最常用模型", value: topName, sub: topSub, text: true }),
 				),
-				// 概览数据之后：活动洞察（默认收起）
-				element(Insights, { insights: data.insights, sessionCount: data.sessionCount, messageCount: data.messageCount }),
+				// 概览数据之后：活动洞察（默认收起；随日期区间筛选）
+				element(Insights, { insights: winInsights, sessionCount: data.sessionCount, messageCount: data.messageCount }),
 				wnd.dateKeys.length === 0 ? element("div", { className: "ust-warn" }, "当前时间范围没有数据") : null,
 				data.warnings && data.warnings.length > 0 ? element("div", { className: "ust-warn" }, data.warnings.join("；")) : null,
 				hasData && wnd.dateKeys.length > 0 ? element(Trend, { days, window: wnd }) : null,
 				hasData && wnd.dateKeys.length > 0 ? element(Donut, { days, window: wnd }) : null,
 			element(ProvidersView, { days: days, window: wnd, ranks: ranks }),
 			element(SessionsView, { days: days, window: wnd, meta: data.sessions, ranks: ranks }),
-				// 会话统计下方：插件 / MCP / Skill 三榜 TOP5
-				element(TopBoards, { insights: data.insights }),
+				// 会话统计下方：插件 / MCP / Skill 三榜 TOP5（随日期区间筛选）
+				element(TopBoards, { insights: winInsights }),
 				element("div", { className: "ust-footer" },
 					element("div", { className: "ust-meta" },
 						loading ? "正在重新扫描全部会话…" : (data.generatedAt ? "数据更新于 " + fmtClock(data.generatedAt) : ""),

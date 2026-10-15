@@ -6,7 +6,7 @@
 
 **覆盖：全历史会话扫描 × 用量柱状图 × 模型刻度环 × 活跃热力图（三视图） × 会话与供应商统计 × 活动洞察 × 插件/MCP/Skill 榜 × 深浅双主题**
 
-[![Version](https://img.shields.io/badge/Version-v0.1.0-1D5FD0?style=for-the-badge)](package.json)
+[![Version](https://img.shields.io/badge/Version-v0.1.1-1D5FD0?style=for-the-badge)](package.json)
 [![DSH Plugin](https://img.shields.io/badge/DSH-Plugin-0E7C86?style=for-the-badge)](#安装)
 [![图表](https://img.shields.io/badge/图表-手写SVG-F59E0B?style=for-the-badge)](#设计与实现)
 [![License](https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge)](#许可与致谢)
@@ -165,14 +165,12 @@ dsh-token-panel/
 
 MIT License。
 
-本项目基于 [Amer-CN/zcode-usage-stats](https://github.com/Amer-CN/zcode-usage-stats)（MIT）改造：将原本挂在**设置页**的视图改为**侧边栏原生菜单 + 主区域页面**，并新增 GitHub 风格热力图、会话统计、供应商统计、分页与自动刷新等能力。
 
 ### 参考实现
 
 | 项目 | 借鉴内容 |
 |------|----------|
-| [Amer-CN/zcode-usage-stats](https://github.com/Amer-CN/zcode-usage-stats) | 本项目的前身：设置页视图、基础聚合与图表骨架 |
 | [jiamuAi/dsh-token-usage](https://github.com/jiamuAi/dsh-token-usage) | **活跃时长口径**（> 30 分钟断开的分段活跃时长）、**活动洞察**（工具 / Skill / MCP 统计）、**插件与 Skill TOP5**、**热力图多视图**（每日 / 每周 / 累计）等思路 |
 
-> 上述借鉴均为**思路与口径**层面的参考；本插件的实现（聚合代码、SVG 图表、样式与测试）均为独立编写，未复制其源码。感谢两个项目作者的公开分享。
+> 上述借鉴均为**思路与口径**层面的参考；本插件的实现（聚合代码、SVG 图表、样式与测试）均为独立编写，未复制其源码。感谢 jiamuAi 作者的公开分享。
 

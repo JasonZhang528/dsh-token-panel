@@ -6,7 +6,7 @@
 
 **Covers: full-history session scan × usage trend × model dial × activity heatmap × session & provider breakdown × light/dark themes**
 
-[![Version](https://img.shields.io/badge/Version-v0.1.0-1D5FD0?style=for-the-badge)](package.json)
+[![Version](https://img.shields.io/badge/Version-v0.1.1-1D5FD0?style=for-the-badge)](package.json)
 [![DSH Plugin](https://img.shields.io/badge/DSH-Plugin-0E7C86?style=for-the-badge)](#installation)
 [![Charts](https://img.shields.io/badge/Charts-Hand--written%20SVG-F59E0B?style=for-the-badge)](#design--implementation)
 [![License](https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge)](#license--credits)
@@ -165,14 +165,12 @@ dsh-token-panel/
 
 MIT License.
 
-Based on [Amer-CN/zcode-usage-stats](https://github.com/Amer-CN/zcode-usage-stats) (MIT), reworked from a **settings page** into a **native sidebar menu plus main-area page**, with a GitHub-style heatmap, session and provider breakdowns, pagination, and auto refresh added.
 
 ### Reference implementations
 
 | Project | What was borrowed |
 |---------|-------------------|
-| [Amer-CN/zcode-usage-stats](https://github.com/Amer-CN/zcode-usage-stats) | This project's origin: the settings-page view, base aggregation and chart skeleton |
 | [jiamuAi/dsh-token-usage](https://github.com/jiamuAi/dsh-token-usage) | The **active-duration definition** (segments split at gaps over 30 minutes), **activity insights** (tool / skill / MCP statistics), **plugin and skill top-5 boards**, and **multi-view heatmap** (daily / weekly / cumulative) |
 
-> These borrowings are at the level of **ideas and metric definitions**. The implementation here (aggregation code, SVG charts, styles and tests) is written independently; no source code was copied. Thanks to both authors for sharing their work.
+> These borrowings are at the level of **ideas and metric definitions**. The implementation here (aggregation code, SVG charts, styles and tests) is written independently; no source code was copied. Thanks to jiamuAi for sharing their work.
 

@@ -120,6 +120,37 @@ try {
   results["默认选中「今天」"] = Array.isArray(changes.activeTabs) && changes.activeTabs.includes("今天");
 
 
+
+  // ── 本轮改动：控件左置 / 图例五档 / 提示结构化 ──────────────────
+  const ghSide = JSON.parse(await ev("async () => { try {  const layout = document.querySelector('.ust-gh-layout');  if (!layout) return JSON.stringify({ phase: 'noLayout' });  const chart = layout.querySelector('.ust-gh-chart');  const panel = layout.querySelector('.ust-gh-panel');  const titleRow = layout.closest('.ust-block').querySelector('.ust-block-titleRow');  const cr = chart ? chart.getBoundingClientRect() : null;  const pr = panel ? panel.getBoundingClientRect() : null;  const leftOf = !!(cr && pr && pr.right <= cr.left + 1);  const sameRow = !!(cr && pr && Math.abs(pr.top - cr.top) <= Math.max(24, pr.height / 2));  const ctrlInTitle = !!(titleRow && (titleRow.querySelector('.ust-gh-metric') || titleRow.querySelector('.ust-gh-views')));  const rows = panel ? [...panel.querySelectorAll('.ust-gh-panelRow')] : [];  const rowLabs = rows.map(function (r) { const s = r.querySelector('.ust-gh-panelLab'); return s ? s.textContent.trim() : ''; });  const groups = panel ? panel.querySelectorAll('.ust-gh-metric, .ust-gh-views').length : 0;  return JSON.stringify({ leftOf: leftOf, sameRow: sameRow, ctrlInTitle: ctrlInTitle, rowLabs: rowLabs, groups: groups }); } catch (err) { return JSON.stringify({ phase: 'throw', msg: String((err && err.message) || err).slice(0, 150) }); }}"));
+  console.error("GHSIDE " + JSON.stringify(ghSide));
+  results["控件区在热力图左侧"] = ghSide.leftOf === true;
+  results["控件与热力图同一水平线"] = ghSide.sameRow === true;
+  results["控件已移出标题行"] = ghSide.ctrlInTitle === false;
+  results["控件区含指标与维度两组"] = ghSide.groups === 2;
+  results["控件行标签为指标/维度"] = JSON.stringify(ghSide.rowLabs) === JSON.stringify(["指标", "维度"]);
+  const ghLegend = JSON.parse(await ev("async () => { const scale = document.querySelector('.ust-gh-scale--foot'); if (!scale) return JSON.stringify({ phase: 'noScale' }); const sw = scale.querySelectorAll('.ust-gh-sw'); const vals = scale.querySelectorAll('.ust-gh-scale-val'); const labs = scale.querySelectorAll('.ust-scale-lab'); const fills = []; const valText = []; const labText = []; for (let i = 0; i < sw.length; i++) fills.push(getComputedStyle(sw[i]).backgroundColor); for (let i = 0; i < vals.length; i++) valText.push(vals[i].textContent.trim()); for (let i = 0; i < labs.length; i++) labText.push(labs[i].textContent.trim()); return JSON.stringify({ swatches: sw.length, vals: vals.length, valText: valText, labText: labText, fills: fills });}"));
+  console.error("GHLEGEND " + JSON.stringify(ghLegend));
+  results["图例含五档色块"] = ghLegend.swatches === 5;
+  results["图例标注数值区间"] = ghLegend.vals === 5 && ghLegend.valText.every(function (v) { return v.length > 0; });
+  results["图例带少/多标注"] = JSON.stringify(ghLegend.labText) === JSON.stringify(["少", "多"]);
+  // 五档应逐步加深：按 RGB 总和近似亮度逐档比较
+  results["图例五档逐步加深"] = (function () {
+    const lum = ghLegend.fills.map(function (f) {
+      const m = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(f);
+      return m ? Number(m[1]) + Number(m[2]) + Number(m[3]) : -1;
+    });
+    return lum.length === 5 && lum.every(function (v, i) { return i === 0 || v <= lum[i - 1] + 3; });
+  })() === true;
+  // 每日格提示：悬停有数据格子后，应出现带小标题与多行标签值的结构化提示，移出后消失
+  const ghDaytip = JSON.parse(await ev("async () => { try {  const tabs = [...document.querySelectorAll('.ust-tabs .ust-tab')];  const all = tabs.find(function (x) { return x.textContent.trim() === '全部'; });  if (all) all.click();  await new Promise(function (r) { setTimeout(r, 3000); });  const cells = document.querySelectorAll('.ust-hitcell');  let target = null;  for (let i = cells.length - 1; i >= 0; i--) {   const t = cells[i].querySelector('title');   const txt = t ? t.textContent : '';   if (/tokens/.test(txt) && !/无记录/.test(txt) && !/0 tokens/.test(txt)) { target = cells[i]; break; }  }  if (!target) return JSON.stringify({ phase: 'noDataCell' });  const pick = function () { return [...document.querySelectorAll('.ust-tip')].filter(function (t) { return t.querySelector('.ust-tip-head'); }); };  target.dispatchEvent(new MouseEvent('mouseover', { clientX: 120, clientY: 120, bubbles: true, cancelable: true }));  await new Promise(function (r) { setTimeout(r, 700); });  const shown = pick();  const gh = shown.map(function (t) {   return {    rows: [...t.querySelectorAll('.ust-tip-row')].map(function (x) { return x.textContent.replace(/\\s+/g, ' ').trim(); }),    heads: [...t.querySelectorAll('.ust-tip-head')].map(function (x) { return x.textContent.replace(/\\s+/g, ' ').trim(); })   };  });  target.dispatchEvent(new MouseEvent('mouseout', { clientX: 500, clientY: 500, bubbles: true, cancelable: true, relatedTarget: null }));  await new Promise(function (r) { setTimeout(r, 600); });  const gone = pick().length === 0;  return JSON.stringify({ gh: gh[0] || null, gone: gone, had: shown.length }); } catch (err) { return JSON.stringify({ phase: 'throw', msg: String((err && err.message) || err).slice(0, 200) }); }}"));
+  console.error("GHDAYTIP " + JSON.stringify(ghDaytip));
+  results["每日格提示为多行结构"] = !!(ghDaytip.gh && ghDaytip.gh.rows.length >= 2);
+  results["每日格提示含小标题"] = !!(ghDaytip.gh && ghDaytip.gh.heads.length >= 1);
+  results["每日格提示带标签与值"] = !!(ghDaytip.gh && ghDaytip.gh.rows.some(function (r) { return /Token 用量|活跃时长|轮次|年内累计/.test(r); }) && ghDaytip.gh.rows.some(function (r) { return /tokens|分|小时|天|次/.test(r); }));
+  // 只比较热力图所属提示：Trend 的提示由前一个断言留下，不在本断言范围内
+  results["移出后热力图提示消失"] = ghDaytip.gone === true;
+
   // 控制台
   const msgs = String((await mcp.callTool({ name: "list_console_messages", arguments: { pageId } })).content?.[0]?.text ?? "");
   results["浏览器控制台无报错"] = /no console messages found/i.test(msgs);

@@ -120,7 +120,7 @@ ok("按天输出会话明细", h.includes("const sessions = [...(d.bySession || 
 ok("按天输出供应商明细", h.includes("const providers = [...(d.byProvider || new Map()).entries()]"));
 ok("按天输出消息数", h.includes("messages: d.messages"));
 ok("会话名取自 session/title 事件", h.includes('case "session/title":') && h.includes("sessionTitle = ev.data.title.trim()"));
-ok("缓存带 schemaVersion", h.includes("const CACHE_SCHEMA_VERSION = 4") && h.includes("schemaVersion: CACHE_SCHEMA_VERSION"));
+ok("缓存带 schemaVersion", h.includes("const CACHE_SCHEMA_VERSION = 5") && h.includes("schemaVersion: CACHE_SCHEMA_VERSION"));
 ok("旧 schemaVersion 缓存不采用", h.includes("j.schemaVersion === CACHE_SCHEMA_VERSION"));
 
 section("客户端：日期范围过滤（Token用量统计以下）");
@@ -222,18 +222,33 @@ ok("时长格式化", c.includes("function fmtDuration(ms)") && c.includes("func
 ok("会话表含时长列", c.includes('element("th", { className: "ust-tblNum" }, "时长")') && c.includes("fmtDuration(r.durationMs)"));
 ok("洞察默认收起", c.includes("function Insights({ insights, sessionCount, messageCount })") && c.includes("const [open, setOpen] = react.useState(false);"));
 ok("洞察按钮居中且双箭头", c.includes("ust-insight-toggle") && c.includes("ust-insight-chev") && c.includes('element("span", null, "›")'));
-ok("三榜 TOP5", c.includes("function TopBoards({ insights })") && c.includes('col("最常用插件"') && c.includes('col("最常用 MCP"') && c.includes('col("最常用 Skill"') && c.includes('["最常用插件", ins.topPlugins || []]'));
+ok("三榜 TOP5",
+  c.includes("function TopBoards({ insights })")
+  && c.includes('["最常用插件", ins.topPlugins || []],')
+  && c.includes('["最常用 MCP", ins.topMcp || []],')
+  && c.includes('["最常用 Skill", ins.topSkills || []],')
+  // 榜单由 col(title, list) 生成：标题以变量传入，不再出现字面量调用
+  && c.includes("const cols = groups.map(([title, list]) => col(title, list));"));
 ok("三榜同一水平线", c.includes(".ust-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));"));
 ok("无数据的榜单不渲染", c.includes("].filter(([, list]) => list.length > 0);") && c.includes("if (!groups.length) return null;"));
-ok("柱状图不再标多余的 0", !c.includes('textAnchor: "end" }, "0")'));
+// 回归保护只针对 Trend（用量趋势柱状图）：其基线本就是 0，再标一个 0 会与
+// X 轴首刻度挤在一起。热力图 HeatTrend 的 Y 轴确实需要 0/峰值两极，故限定函数体。
+{
+  const trendStart = c.indexOf("function Trend({ days, window: wnd })");
+  const trendEnd = trendStart >= 0 ? c.indexOf("\n\t\tfunction ", trendStart + 10) : -1;
+  const trendBody = trendStart >= 0 && trendEnd > trendStart ? c.slice(trendStart, trendEnd) : "";
+  ok("柱状图不再标多余的 0", trendBody.length > 0 && !trendBody.includes('textAnchor: "end" }, "0")'));
+}
 ok("色阶移到底部", c.includes("ust-gh-scale ust-gh-scale--foot"));
 ok("年度概况已删除", !c.includes("ust-gh-stats") && !c.includes("近一年合计"));
 ok("每周/累计带数值标注", c.includes("ust-gh-val") && c.includes("fmtDurationShort(x.sum)"));
-ok("三榜挂载在会话统计之后", c.indexOf("element(SessionsView,") < c.indexOf("element(TopBoards, { insights: data.insights })"));
+ok("三榜挂载在会话统计之后", c.indexOf("element(SessionsView,") < c.indexOf("element(TopBoards, { insights: winInsights })"));
 
 section("客户端：热力图指标与三视图");
 ok("Token/时长单选", c.includes('["token", "Token"], ["time", "时长"]') && c.includes("setMetric(id)"));
-ok("每日/每周/累计三视图", c.includes('["day", "每日"], ["week", "每周"], ["cum", "累计"]') && c.includes("function HeatTrend({ cells, metric, fmtMetric, view })"));
+ok("每日/每周/累计三视图",
+  c.includes('["day", "每日"], ["week", "每周"], ["cum", "累计"]')
+  && /function HeatTrend\(\{ cells, metric, fmtMetric, view/.test(c));
 ok("提示随指标切换", c.includes("fmtMetric(metricOf(c0))") && c.includes("view === \"cum\" ? \"累计 \" : \"本周 \""));
 
 section("客户端：模型配色统一");
@@ -309,6 +324,34 @@ ok("色阶恢复少/多标注", c.includes('"ust-scale-lab" }, "少"') && c.incl
 ok("色阶方块保留", c.includes('className: "ust-gh-sw ust-gh-lv" + lv'));
 
 
+
+section("客户端：本轮改动（tip 风格 / 概览卡 / 洞察筛选 / TOP5 / 供应商行）");
+// 1) 热力图 tip：小标题与行标签同一套文案，不再混排「日期 + 英文指标」
+ok("tip 小标题为纯日期", c.includes("tipHead(fmtDayLabel(c0.key))"));
+ok("tip 无折算行", !c.includes("\"折算\"") && !c.includes("折算："));
+// 2) 概览卡：第二行为 TOKENS 文本；窗口 Token 在窗口消息之后
+ok("窗口 Token 第二行为 TOKENS", c.includes('label: "窗口 Token", value: fmtLarge(stats.total), sub: "TOKENS" '));
+ok("缓存命中第二行为 TOKENS", c.includes('label: "缓存命中", value: fmtLarge(winStats.cacheRead), sub: "TOKENS" '));
+{
+  const iToken = c.indexOf('label: "窗口 Token"');
+  const iMsg = c.indexOf('label: "窗口消息"');
+  ok("窗口 Token 排在窗口消息之后", iToken > iMsg && iMsg > 0);
+}
+// 3) 活动洞察与 TOP5 按日期区间筛选
+ok("宿主按天下发洞察计数", h.includes("day.insights") && h.includes("bumpDay"));
+ok("洞察随窗口合并", c.includes("function insightsIn(days, wnd, all)") && c.includes("const winInsights = insightsIn(days, wnd, data.insights)"));
+ok("洞察挂载用 winInsights", c.includes("element(Insights, { insights: winInsights") && c.includes("element(TopBoards, { insights: winInsights })"));
+ok("宿主 schema 升至 5", h.includes("const CACHE_SCHEMA_VERSION = 5"));
+// 4) TOP5 序号徽标：前三名金银铜
+ok("TOP5 序号分梯队", c.includes("ust-top-rank is-gold") || (c.includes('" is-gold"') && c.includes('" is-silver"') && c.includes('" is-bronze"')));
+ok("序号徽标样式已定义", c.includes(".ust-top-rank.is-gold") && c.includes(".ust-top-rank.is-silver") && c.includes(".ust-top-rank.is-bronze"));
+// 5) 供应商行：logo 徽标 + 名称同行
+ok("供应商 logo 徽标", c.includes("ust-provLogo") && c.includes("ust-provCell"));
+ok("供应商徽标取首字母", c.includes("(r.provider || \"?\").slice(0, 1).toUpperCase()"));
+ok("徽标样式已定义", c.includes(".ust-provLogo") && c.includes(".ust-provCell"));
+// 6) 每周/累计 tip 结构化
+ok("每周 tip 结构化", c.includes("function HeatTrend({ cells, metric, fmtMetric, view, tipRow, tipHead") && c.includes("const weekTip = (x) => ["));
+ok("累计视图带命中带", c.includes("className: \"ust-hitband\"") && c.includes("series.map((x, i) => element(\"rect\", {"));
 ok("注册 /api/usage-stats 路由", h.includes('path: "/api/usage-stats"'));
 ok("自行通过信任栅栏", h.includes("requestRejection"));
 ok("inject 含 webServer", h.includes('"webServer"'));
@@ -384,7 +427,7 @@ async function runBrowserE2E() {
     const failed = Object.entries(r).filter(([, v]) => v !== true).map(([k]) => k);
     if (failed.length) {
       console.log("  -- 失败项：" + failed.join("、"));
-      for (const l of out.split("\n")) if (/^(SIX|TRIO|CHANGES|DOM|BL) /.test(l)) console.log("  -- " + l.slice(0, 900));
+      for (const l of out.split("\n")) if (/(GHSIDE|GHLEGEND|GHDAYTIP|E2E_ERROR|CONSOLE_MSGS)/.test(l)) console.log("  -- " + l.slice(0, 900));
     }
     for (const [name, cond] of Object.entries(r)) ok(name, cond === true);
   } finally {
