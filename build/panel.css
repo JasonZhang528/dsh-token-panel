@@ -423,17 +423,18 @@ body[data-ds-dark-theme] .ust-date::-webkit-calendar-picker-indicator { filter: 
 .ust-gh-cell { stroke: rgba(0,0,0,.05); stroke-width: 1; }
 body[data-ds-dark-theme] .ust-gh-cell { stroke: rgba(255,255,255,.06); }
 .ust-gh-cell.is-today { stroke: var(--ink); stroke-width: 1.5; }
-/* 五档底色：0 = 无数据 */
-.ust-gh-lv0 { fill: #E6E5E0; }
-.ust-gh-lv1 { fill: #A8D4F5; }
-.ust-gh-lv2 { fill: #6FBBEF; }
-.ust-gh-lv3 { fill: #3D9BE0; }
-.ust-gh-lv4 { fill: #1B7FD4; }
-body[data-ds-dark-theme] .ust-gh-lv0 { fill: #2E2D28; }
-body[data-ds-dark-theme] .ust-gh-lv1 { fill: #1F5C8B; }
-body[data-ds-dark-theme] .ust-gh-lv2 { fill: #2E7FB8; }
-body[data-ds-dark-theme] .ust-gh-lv3 { fill: #4AA3DC; }
-body[data-ds-dark-theme] .ust-gh-lv4 { fill: #7CC4F0; }
+/* 五档底色：0 = 无数据。同一份颜色双写 fill（SVG 格子）与 background（HTML 图例色块），
+   两者必须同步改，否则图例会出现「有区间无颜色」的空档。 */
+.ust-gh-lv0 { fill: #E6E5E0; background: #E6E5E0; }
+.ust-gh-lv1 { fill: #A8D4F5; background: #A8D4F5; }
+.ust-gh-lv2 { fill: #6FBBEF; background: #6FBBEF; }
+.ust-gh-lv3 { fill: #3D9BE0; background: #3D9BE0; }
+.ust-gh-lv4 { fill: #1B7FD4; background: #1B7FD4; }
+body[data-ds-dark-theme] .ust-gh-lv0 { fill: #2E2D28; background: #2E2D28; }
+body[data-ds-dark-theme] .ust-gh-lv1 { fill: #1F5C8B; background: #1F5C8B; }
+body[data-ds-dark-theme] .ust-gh-lv2 { fill: #2E7FB8; background: #2E7FB8; }
+body[data-ds-dark-theme] .ust-gh-lv3 { fill: #4AA3DC; background: #4AA3DC; }
+body[data-ds-dark-theme] .ust-gh-lv4 { fill: #7CC4F0; background: #7CC4F0; }
 .ust-gh-axis { fill: var(--faint, #86857F); font-size: 10px; font-family: inherit; }
 .ust-gh-scale { display: flex; align-items: center; gap: 4px; }
 /* 色阶已移到图表下方，标题行不再有年度概况 */
@@ -459,19 +460,14 @@ body[data-ds-dark-theme] .ust-gh-mbtn.active, body[data-ds-dark-theme] .ust-gh-v
 /* 色阶移到底部后居中显示，与图表同宽 */
 .ust-gh-scale--foot { justify-content: center; margin-top: 10px; }
 
-/* ── 热力图：左控右图，同一水平线 ─────────────────────────── */
-/* 控件组从标题行移到图表左侧，标题行不再被挤压，栅格图取回横向空间 */
-.ust-gh-layout { display: flex; align-items: flex-start; gap: 16px; }
-.ust-gh-chart { flex: 1 1 auto; min-width: 0; }
-.ust-gh-panel { flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; }
-.ust-gh-panelRow { display: flex; align-items: center; gap: 8px; }
-/* 控件组标签：字号跟随说明文字，不抢视觉 */
-.ust-gh-panelLab { font-size: 11px; color: var(--muted); white-space: nowrap; }
-/* 窄容器：控件区落到图表下方，避免把网格压出横向滚动 */
-@media (max-width: 720px) {
-  .ust-gh-layout { flex-direction: column; gap: 10px; }
-  .ust-gh-panel { flex-direction: row; flex-wrap: wrap; gap: 8px 16px; }
-}
+/* ── 热力图：标题行 + 控件行，图表独占整行 ────────────────── */
+/* 控件独立成行且居右：标题区干净，栅格图取回全部横向空间 */
+.ust-block-head.ust-gh-head { flex-direction: column; align-items: stretch; }
+.ust-gh-toolbar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px 24px; margin-top: 8px; }
+.ust-gh-toolGroup { display: flex; align-items: center; gap: 8px; }
+.ust-gh-toolLab { font-size: 11px; color: var(--muted); white-space: nowrap; }
+/* 图表独占一行 */
+.ust-gh-body { width: 100%; min-width: 0; }
 /* 图例置底：五档颜色逐步加深，每档旁标出数值区间 */
 .ust-gh-scale--foot { justify-content: center; align-items: center; flex-wrap: wrap; margin-top: 10px; gap: 4px 6px; }
 .ust-gh-scale-item { display: inline-flex; align-items: center; gap: 4px; }
@@ -508,18 +504,61 @@ body[data-ds-dark-theme] .ust-gh-mbtn.active, body[data-ds-dark-theme] .ust-gh-v
 .ust-top-title { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
 .ust-top-row { display: flex; align-items: baseline; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--rule); }
 .ust-top-row:last-child { border-bottom: 0; }
-/* 序号徽标：前三名以金银铜底色分出梯队，其余保持中性底 */
+/* 序号徽标：五档成体系。
+   1–3 名用金属色（金 / 银 / 铜）+ 高光描边，奖牌质感；
+   4–5 名用品牌蓝的深浅两档 + 同款描边，与奖牌同一造型语言。
+   全部 20px 圆角方徽，深浅双主题各配一套对比度达标的字色。 */
 .ust-top-rank {
-	flex: none; width: 18px; height: 18px; border-radius: 5px; text-align: center;
-	font-size: 10.5px; font-weight: 700; line-height: 18px;
+	flex: none; width: 20px; height: 20px; border-radius: 6px; text-align: center;
+	font-size: 11px; font-weight: 700; line-height: 20px;
 	color: var(--muted); background: var(--hover);
+	border: 1px solid transparent;
 }
-.ust-top-rank.is-gold { color: #6B4E00; background: #F2C94C; }
-.ust-top-rank.is-silver { color: #4A4E52; background: #D7DBDF; }
-.ust-top-rank.is-bronze { color: #6E3A1D; background: #E0A878; }
-body[data-ds-dark-theme] .ust-top-rank.is-gold { color: #1E1600; background: #E8C547; }
-body[data-ds-dark-theme] .ust-top-rank.is-silver { color: #23262A; background: #C3C9CF; }
-body[data-ds-dark-theme] .ust-top-rank.is-bronze { color: #2A130A; background: #CE9464; }
+/* 第 1 名：金 —— 金底 + 金色深描边 */
+.ust-top-rank.is-gold {
+	color: #5C4300; background: linear-gradient(160deg, #F7D154 0%, #E9B93A 100%);
+	border-color: #D9A52C;
+}
+/* 第 2 名：银 —— 银底 + 银灰描边 */
+.ust-top-rank.is-silver {
+	color: #3E4348; background: linear-gradient(160deg, #E4E8EC 0%, #C6CCD2 100%);
+	border-color: #B2B9C0;
+}
+/* 第 3 名：铜 —— 铜底 + 铜棕描边 */
+.ust-top-rank.is-bronze {
+	color: #5C2E12; background: linear-gradient(160deg, #E7AE7C 0%, #D18C55 100%);
+	border-color: #BC7A44;
+}
+/* 第 4 / 5 名：品牌蓝深浅两档，填满梯队的「上位圈」 */
+.ust-top-rank.is-four {
+	color: #123C74; background: linear-gradient(160deg, #9CBEE6 0%, #5B8FD4 100%);
+	border-color: #4A7EC4;
+}
+.ust-top-rank.is-five {
+	color: #0E2A50; background: linear-gradient(160deg, #5B8FD4 0%, #2C6BC4 100%);
+	border-color: #245AA8;
+}
+body[data-ds-dark-theme] .ust-top-rank { color: var(--muted); background: var(--hover); }
+body[data-ds-dark-theme] .ust-top-rank.is-gold {
+	color: #1E1600; background: linear-gradient(160deg, #E8C547 0%, #C9A32E 100%);
+	border-color: #B08F22;
+}
+body[data-ds-dark-theme] .ust-top-rank.is-silver {
+	color: #17191B; background: linear-gradient(160deg, #C3C9CF 0%, #9AA2AA 100%);
+	border-color: #828A92;
+}
+body[data-ds-dark-theme] .ust-top-rank.is-bronze {
+	color: #2A130A; background: linear-gradient(160deg, #CE9464 0%, #A96F3D 100%);
+	border-color: #8F5B2F;
+}
+body[data-ds-dark-theme] .ust-top-rank.is-four {
+	color: #EAF2FC; background: linear-gradient(160deg, #3F6EA8 0%, #2A4C7A 100%);
+	border-color: #1F3D63;
+}
+body[data-ds-dark-theme] .ust-top-rank.is-five {
+	color: #F0F6FD; background: linear-gradient(160deg, #2C6BC4 0%, #123C74 100%);
+	border-color: #0E2F5C;
+}
 .ust-top-name { flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ust-top-count { flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ust-top-empty { font-size: 12px; color: var(--faint); padding: 6px 0; }
@@ -557,6 +596,9 @@ body[data-ds-dark-theme] .ust-tbl th, body[data-ds-dark-theme] .ust-tbl td { bor
 	color: #FFFFFF; text-shadow: 0 0 1px rgba(0,0,0,.35);
 	user-select: none;
 }
+/* 内置品牌标记：透明底、品牌色描形，深浅主题都靠 currentColor 自适应 */
+.ust-provLogo.is-brand { width: 20px; height: 20px; border-radius: 0; text-shadow: none; }
+.ust-provLogo.is-brand svg { display: block; width: 100%; height: 100%; }
 
 /* ── 分页控件 ── */
 .ust-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; }

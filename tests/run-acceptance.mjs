@@ -270,6 +270,9 @@ section("客户端：进入即渲染");
 ok("首次请求延后到首帧之后", c.includes("requestAnimationFrame(run)") && c.includes("cancelAnimationFrame(id)"));
 ok("日期栏外壳抽为共用元素", c.includes("const headerEl =") && c.includes("headerEl,"));
 ok("加载态先画页面骨架", c.includes('element("div", { className: "ust-placeholder" }, "正在读取本机会话记录…")'));
+// 两拍策略：先秒回缓存渲染，紧接着强制重扫刷新——不等自动刷新档
+ok("首帧两拍：先秒回再强刷", c.includes("await load(false);") && c.includes("await load(true);") && c.includes("第二拍 load(true) 强制重扫拿最新数据"));
+ok("强刷落在秒回之后不并发", c.indexOf("await load(false);") < c.indexOf("await load(true);"));
 
 section("客户端：表头与数据列严格对应");
 // 回归：曾发生会话表只改表头、漏改数据行，导致「缓存命中」与「总量」互换。
@@ -347,7 +350,14 @@ ok("TOP5 序号分梯队", c.includes("ust-top-rank is-gold") || (c.includes('" 
 ok("序号徽标样式已定义", c.includes(".ust-top-rank.is-gold") && c.includes(".ust-top-rank.is-silver") && c.includes(".ust-top-rank.is-bronze"));
 // 5) 供应商行：logo 徽标 + 名称同行
 ok("供应商 logo 徽标", c.includes("ust-provLogo") && c.includes("ust-provCell"));
-ok("供应商徽标取首字母", c.includes("(r.provider || \"?\").slice(0, 1).toUpperCase()"));
+ok("供应商徽标内置品牌标记", c.includes("const PROVIDER_BRANDS = {") && c.includes("function ProviderBadge({ name, color })"));
+ok("未收录供应商回落首字母", c.includes('String(name || "?").slice(0, 1).toUpperCase()'));
+ok("品牌匹配兼容名称变体", c.includes("function providerBrandOf(name)") && c.includes("n.includes(k)"));
+ok("品牌标记为内联 SVG", c.includes("ust-provLogo is-brand") && c.includes('viewBox: "0 0 24 24", fill: "currentColor"'));
+// tip 数字走万 / 亿量级
+ok("tip Token 用万/亿量级", c.includes('tipRow("Token 用量", fmtLarge(c0.total) + " tokens")') && c.includes('tipRow(view === "cum" ? "累计 Token" : "Token 用量", fmtLarge(x.sum) + " tokens")'));
+// 旧宿主降级：无天级 insights 时退回全历史，避免榜单整块消失
+ok("洞察降级兼容旧宿主", c.includes("const hasDayLevel = (days || []).some((d) => d && d.insights)") && c.includes("if (!keys.length || !hasDayLevel) return all || {};"));
 ok("徽标样式已定义", c.includes(".ust-provLogo") && c.includes(".ust-provCell"));
 // 6) 每周/累计 tip 结构化
 ok("每周 tip 结构化", c.includes("function HeatTrend({ cells, metric, fmtMetric, view, tipRow, tipHead") && c.includes("const weekTip = (x) => ["));
@@ -427,7 +437,7 @@ async function runBrowserE2E() {
     const failed = Object.entries(r).filter(([, v]) => v !== true).map(([k]) => k);
     if (failed.length) {
       console.log("  -- 失败项：" + failed.join("、"));
-      for (const l of out.split("\n")) if (/(GHSIDE|GHLEGEND|GHDAYTIP|E2E_ERROR|CONSOLE_MSGS)/.test(l)) console.log("  -- " + l.slice(0, 900));
+      for (const l of out.split("\n")) if (/(GHSIDE|GHLEGEND|GHDAYTIP|E2E_ERROR|CONSOLE_MSGS|PAGE |NEU )/.test(l)) console.log("  -- " + l.slice(0, 900));
     }
     for (const [name, cond] of Object.entries(r)) ok(name, cond === true);
   } finally {

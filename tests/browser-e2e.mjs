@@ -121,14 +121,17 @@ try {
 
 
 
-  // ── 本轮改动：控件左置 / 图例五档 / 提示结构化 ──────────────────
-  const ghSide = JSON.parse(await ev("async () => { try {  const layout = document.querySelector('.ust-gh-layout');  if (!layout) return JSON.stringify({ phase: 'noLayout' });  const chart = layout.querySelector('.ust-gh-chart');  const panel = layout.querySelector('.ust-gh-panel');  const titleRow = layout.closest('.ust-block').querySelector('.ust-block-titleRow');  const cr = chart ? chart.getBoundingClientRect() : null;  const pr = panel ? panel.getBoundingClientRect() : null;  const leftOf = !!(cr && pr && pr.right <= cr.left + 1);  const sameRow = !!(cr && pr && Math.abs(pr.top - cr.top) <= Math.max(24, pr.height / 2));  const ctrlInTitle = !!(titleRow && (titleRow.querySelector('.ust-gh-metric') || titleRow.querySelector('.ust-gh-views')));  const rows = panel ? [...panel.querySelectorAll('.ust-gh-panelRow')] : [];  const rowLabs = rows.map(function (r) { const s = r.querySelector('.ust-gh-panelLab'); return s ? s.textContent.trim() : ''; });  const groups = panel ? panel.querySelectorAll('.ust-gh-metric, .ust-gh-views').length : 0;  return JSON.stringify({ leftOf: leftOf, sameRow: sameRow, ctrlInTitle: ctrlInTitle, rowLabs: rowLabs, groups: groups }); } catch (err) { return JSON.stringify({ phase: 'throw', msg: String((err && err.message) || err).slice(0, 150) }); }}"));
+  // ── 本轮改动：控件行居右 / 图表独占整行 / 图例五档 / 提示结构化 ──────────
+  const ghSide = JSON.parse(await ev("async () => { try {  const block = [...document.querySelectorAll('.ust-block')].find(function (b) { var h = b.querySelector('.ust-h2'); return h && h.textContent.indexOf('活跃热力图') >= 0; });  if (!block) return JSON.stringify({ phase: 'noBlock' });  const toolbar = block.querySelector('.ust-gh-toolbar');  const body = block.querySelector('.ust-gh-body');  const titleRow = block.querySelector('.ust-block-titleRow');  const wrap = body ? body.querySelector('.ust-gh-wrap') : null;  const svg = wrap ? wrap.querySelector('svg') : null;  const br = body ? body.getBoundingClientRect() : null;  const tr = toolbar ? toolbar.getBoundingClientRect() : null;  const sr = titleRow ? titleRow.getBoundingClientRect() : null;  var g = { phase: 'ok' };  g.toolbarFound = !!toolbar;  g.ctrlInTitle = !!(titleRow && (titleRow.querySelector('.ust-gh-metric') || titleRow.querySelector('.ust-gh-views')));  g.toolbarBelowTitle = !!(tr && sr && tr.top >= sr.bottom - 2);  g.toolbarRightAligned = !!(tr && toolbar && getComputedStyle(toolbar).justifyContent === 'flex-end');  g.labs = toolbar ? [...toolbar.querySelectorAll('.ust-gh-toolLab')].map(function (s) { return s.textContent.trim(); }) : [];  g.groups = toolbar ? toolbar.querySelectorAll('.ust-gh-metric, .ust-gh-views').length : 0;  g.chartFullRow = !!(br && wrap && Math.abs(wrap.getBoundingClientRect().width - br.width) <= 2);  g.svgVisible = !!(svg && svg.getBoundingClientRect().width > 300);  return JSON.stringify(g); } catch (err) { return JSON.stringify({ phase: 'throw', msg: String((err && err.message) || err).slice(0, 150) }); }}"));
   console.error("GHSIDE " + JSON.stringify(ghSide));
-  results["控件区在热力图左侧"] = ghSide.leftOf === true;
-  results["控件与热力图同一水平线"] = ghSide.sameRow === true;
-  results["控件已移出标题行"] = ghSide.ctrlInTitle === false;
-  results["控件区含指标与维度两组"] = ghSide.groups === 2;
-  results["控件行标签为指标/维度"] = JSON.stringify(ghSide.rowLabs) === JSON.stringify(["指标", "维度"]);
+  results["热力图控件行存在"] = ghSide.toolbarFound === true;
+  results["控件在标题行下方独立成行"] = ghSide.toolbarBelowTitle === true;
+  results["控件行居右对齐"] = ghSide.toolbarRightAligned === true;
+  results["控件未混入标题行"] = ghSide.ctrlInTitle === false;
+  results["控件行含指标与维度两组"] = ghSide.groups === 2;
+  results["控件行标签为指标/维度"] = JSON.stringify(ghSide.labs) === JSON.stringify(["指标", "维度"]);
+  results["图表独占整行"] = ghSide.chartFullRow === true;
+  results["热力图栅格可见且够宽"] = ghSide.svgVisible === true;
   const ghLegend = JSON.parse(await ev("async () => { const scale = document.querySelector('.ust-gh-scale--foot'); if (!scale) return JSON.stringify({ phase: 'noScale' }); const sw = scale.querySelectorAll('.ust-gh-sw'); const vals = scale.querySelectorAll('.ust-gh-scale-val'); const labs = scale.querySelectorAll('.ust-scale-lab'); const fills = []; const valText = []; const labText = []; for (let i = 0; i < sw.length; i++) fills.push(getComputedStyle(sw[i]).backgroundColor); for (let i = 0; i < vals.length; i++) valText.push(vals[i].textContent.trim()); for (let i = 0; i < labs.length; i++) labText.push(labs[i].textContent.trim()); return JSON.stringify({ swatches: sw.length, vals: vals.length, valText: valText, labText: labText, fills: fills });}"));
   console.error("GHLEGEND " + JSON.stringify(ghLegend));
   results["图例含五档色块"] = ghLegend.swatches === 5;
@@ -140,7 +143,9 @@ try {
       const m = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(f);
       return m ? Number(m[1]) + Number(m[2]) + Number(m[3]) : -1;
     });
-    return lum.length === 5 && lum.every(function (v, i) { return i === 0 || v <= lum[i - 1] + 3; });
+    // 亮度必须严格递减（无相等档），且全部为真实颜色（>0）——杜绝全透明时的假阳性
+    return lum.length === 5 && lum.every(function (v) { return v > 0; })
+      && lum.every(function (v, i) { return i === 0 || v < lum[i - 1]; });
   })() === true;
   // 每日格提示：悬停有数据格子后，应出现带小标题与多行标签值的结构化提示，移出后消失
   const ghDaytip = JSON.parse(await ev("async () => { try {  const tabs = [...document.querySelectorAll('.ust-tabs .ust-tab')];  const all = tabs.find(function (x) { return x.textContent.trim() === '全部'; });  if (all) all.click();  await new Promise(function (r) { setTimeout(r, 3000); });  const cells = document.querySelectorAll('.ust-hitcell');  let target = null;  for (let i = cells.length - 1; i >= 0; i--) {   const t = cells[i].querySelector('title');   const txt = t ? t.textContent : '';   if (/tokens/.test(txt) && !/无记录/.test(txt) && !/0 tokens/.test(txt)) { target = cells[i]; break; }  }  if (!target) return JSON.stringify({ phase: 'noDataCell' });  const pick = function () { return [...document.querySelectorAll('.ust-tip')].filter(function (t) { return t.querySelector('.ust-tip-head'); }); };  target.dispatchEvent(new MouseEvent('mouseover', { clientX: 120, clientY: 120, bubbles: true, cancelable: true }));  await new Promise(function (r) { setTimeout(r, 700); });  const shown = pick();  const gh = shown.map(function (t) {   return {    rows: [...t.querySelectorAll('.ust-tip-row')].map(function (x) { return x.textContent.replace(/\\s+/g, ' ').trim(); }),    heads: [...t.querySelectorAll('.ust-tip-head')].map(function (x) { return x.textContent.replace(/\\s+/g, ' ').trim(); })   };  });  target.dispatchEvent(new MouseEvent('mouseout', { clientX: 500, clientY: 500, bubbles: true, cancelable: true, relatedTarget: null }));  await new Promise(function (r) { setTimeout(r, 600); });  const gone = pick().length === 0;  return JSON.stringify({ gh: gh[0] || null, gone: gone, had: shown.length }); } catch (err) { return JSON.stringify({ phase: 'throw', msg: String((err && err.message) || err).slice(0, 200) }); }}"));
