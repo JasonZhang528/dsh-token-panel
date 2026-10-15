@@ -528,22 +528,6 @@ window.__ModuleLoader__.load({
 									onClick: () => setView(id),
 								}, label)),
 						),
-						// 色阶方块连「少 / 多」一起给出，颜色含义一眼可读
-						element("div", { className: "ust-gh-scale" },
-							element("span", { className: "ust-scale-lab" }, "少"),
-							[0, 1, 2, 3, 4].map((lv) => element("span", { key: lv, className: "ust-gh-sw ust-gh-lv" + lv })),
-							element("span", { className: "ust-scale-lab" }, "多"),
-						),
-					),
-					// 右侧年度概况：口径为「最近一年」，且随所选指标切换（与全历史汇总卡不重复）
-					element("div", { className: "ust-gh-stats" },
-						[
-							{ label: "近一年合计", value: metric === "time" ? fmtDuration(model.yearDuration) : fmtLarge(model.yearTotal) },
-							{ label: "近一年活跃", value: String(model.activeDays) + " 天" },
-							{ label: "近一年峰值", value: peakMetric > 0 ? (metric === "time" ? fmtDuration(peakMetric) : fmtLarge(peakMetric)) : "—" },
-						].map((it) => element("div", { key: it.label, className: "ust-gh-stat" },
-							element("div", { className: "ust-gh-stat-lab" }, it.label),
-							element("div", { className: "ust-gh-stat-val" }, it.value))),
 					),
 				),
 				view === "day"
@@ -564,6 +548,12 @@ window.__ModuleLoader__.load({
 					)
 					// ── 每周 / 累计视图：柱状与折线，共用同一套指标口径 ──
 					: element(HeatTrend, { cells: model.cells, metric: metric, fmtMetric: fmtMetric, view: view }),
+				// 色阶说明放在图表下方：颜色深浅的含义一眼可读，也不挤占标题行
+				element("div", { className: "ust-gh-scale ust-gh-scale--foot" },
+					element("span", { className: "ust-scale-lab" }, "少"),
+					[0, 1, 2, 3, 4].map((lv) => element("span", { key: lv, className: "ust-gh-sw ust-gh-lv" + lv })),
+					element("span", { className: "ust-scale-lab" }, "多"),
+				),
 			);
 		}
 		// ---------- 热力图：每周柱状 / 累计折线 ----------
@@ -609,6 +599,22 @@ window.__ModuleLoader__.load({
 							onMouseEnter: () => setHover(i), onMouseLeave: () => setHover(null),
 							children: element("title", null, label(x) + " 起 · " + (view === "cum" ? "累计 " : "本周 ") + fmtMetric(x.sum)),
 						})),
+					// 数值标注：每周标柱顶、累计标末端点；仅标非零值，避免空周刷屏
+					view === "week"
+						? series.map((x, i) => (x.sum > 0
+							? element("text", {
+								key: "v" + i, className: "ust-gh-val",
+								x: PAD_L + step * (i + 0.5), y: Math.max(PAD_T + 8, yOf(x.sum) - 5),
+								textAnchor: "middle",
+							}, metric === "time" ? fmtDurationShort(x.sum) : fmtLarge(x.sum))
+							: null))
+						: series.map((x, i) => (i === series.length - 1 || x.sum > 0 && i % 8 === 0
+							? element("text", {
+								key: "v" + i, className: "ust-gh-val",
+								x: PAD_L + step * (i + 0.5), y: Math.max(PAD_T + 8, yOf(x.sum) - 5),
+								textAnchor: "middle",
+							}, metric === "time" ? fmtDurationShort(x.sum) : fmtLarge(x.sum))
+							: null)),
 					// X 轴：按月标注，避免 53 个刻度糊成一片
 					series.map((x, i) => (x.first.dom <= 7
 						? element("text", { key: "x" + i, className: "ust-gh-axis", x: PAD_L + step * (i + 0.5), y: H - 8, textAnchor: "middle" }, x.first.month + "月")
@@ -652,19 +658,30 @@ window.__ModuleLoader__.load({
 		// ---------- 三榜 TOP5（插件 / MCP / Skill） ----------
 		function TopBoards({ insights }) {
 			const ins = insights || {};
-			const col = (title, list, unit, empty) => element("div", { className: "ust-top-col" },
+			// 三栏同高：用 grid 而非 flex，保证三列顶部对齐、行高一致
+			const col = (title, list) => element("div", { key: title, className: "ust-top-col" },
 				element("div", { className: "ust-top-title" }, title),
-				(list && list.length)
-					? list.map((it, i) => element("div", { key: it.name, className: "ust-top-row" },
-						element("span", { className: "ust-top-rank" }, String(i + 1)),
-						element("span", { className: "ust-top-name", title: it.name }, it.name),
-						element("span", { className: "ust-top-count" }, fmtFull(it.count) + " " + unit)))
-					: element("div", { className: "ust-top-empty" }, empty),
+				list.map((it, i) => element("div", { key: it.name, className: "ust-top-row" },
+					element("span", { className: "ust-top-rank" }, String(i + 1)),
+					element("span", { className: "ust-top-name", title: it.name }, it.name),
+					element("span", { className: "ust-top-count" }, fmtFull(it.count) + " 次"))),
 			);
-			return element("div", { className: "ust-block ust-top" },
-				col("最常用插件", ins.topPlugins, "次", "暂无插件调用"),
-				col("最常用 MCP", ins.topMcp, "次", "暂无 MCP 调用"),
-				col("最常用 Skill", ins.topSkills, "次", "暂无 Skill 调用"),
+			// 无数据的榜单整栏不渲染，避免出现空的占位列
+			const groups = [
+				["最常用插件", ins.topPlugins || []],
+				["最常用 MCP", ins.topMcp || []],
+				["最常用 Skill", ins.topSkills || []],
+			].filter(([, list]) => list.length > 0);
+			if (!groups.length) return null;
+			const cols = groups.map(([title, list]) => col(title, list));
+			return element("div", { className: "ust-block" },
+				element("div", { className: "ust-block-head" },
+					element("div", { className: "ust-block-titleRow" },
+						element("h2", { className: "ust-h2" }, "最常用"),
+						element("div", { className: "ust-sub" }, "插件 / MCP / Skill 各自 TOP5，按调用次数排序"),
+					),
+				),
+				element("div", { className: "ust-top" }, cols),
 			);
 		}
 
@@ -989,12 +1006,12 @@ window.__ModuleLoader__.load({
 			const xc = (i) => (N > 1 ? PAD_L + i * (needScroll ? minStep : plotW / (N - 1)) : PAD_L + plotW / 2);
 			const y = (v) => baseY - (v / peakTotal) * (baseY - topY);
 
-			// 柱状图 Y 轴：0 与峰值两档刻度，避免密集小字
+			// 柱状图 Y 轴：只标峰值一档。基线本就是 0，再标一个「0」会与 X 轴首刻度挤在一起，
+			// 看起来像凭空多出一个 0，故删除。
 			const grid = [
 				element("line", { key: "g0", className: "ust-grid", x1: PAD_L, y1: topY, x2: PAD_L + plotW, y2: topY }),
 				element("line", { key: "g1", className: "ust-baseline", x1: PAD_L, y1: baseY, x2: PAD_L + plotW, y2: baseY }),
 				element("text", { key: "t0", className: "ust-axis", x: PAD_L - 7, y: topY + 4, textAnchor: "end" }, fmtLarge(peakTotal)),
-				element("text", { key: "t1", className: "ust-axis", x: PAD_L - 7, y: baseY + 4, textAnchor: "end" }, "0"),
 			];
 
 			// X 轴：逐格出刻度，把全部时间点 / 日期都标出来。

@@ -222,7 +222,13 @@ ok("时长格式化", c.includes("function fmtDuration(ms)") && c.includes("func
 ok("会话表含时长列", c.includes('element("th", { className: "ust-tblNum" }, "时长")') && c.includes("fmtDuration(r.durationMs)"));
 ok("洞察默认收起", c.includes("function Insights({ insights, sessionCount, messageCount })") && c.includes("const [open, setOpen] = react.useState(false);"));
 ok("洞察按钮居中且双箭头", c.includes("ust-insight-toggle") && c.includes("ust-insight-chev") && c.includes('element("span", null, "›")'));
-ok("三榜 TOP5", c.includes("function TopBoards({ insights })") && c.includes('col("最常用插件"') && c.includes('col("最常用 MCP"') && c.includes('col("最常用 Skill"'));
+ok("三榜 TOP5", c.includes("function TopBoards({ insights })") && c.includes('col("最常用插件"') && c.includes('col("最常用 MCP"') && c.includes('col("最常用 Skill"') && c.includes('["最常用插件", ins.topPlugins || []]'));
+ok("三榜同一水平线", c.includes(".ust-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));"));
+ok("无数据的榜单不渲染", c.includes("].filter(([, list]) => list.length > 0);") && c.includes("if (!groups.length) return null;"));
+ok("柱状图不再标多余的 0", !c.includes('textAnchor: "end" }, "0")'));
+ok("色阶移到底部", c.includes("ust-gh-scale ust-gh-scale--foot"));
+ok("年度概况已删除", !c.includes("ust-gh-stats") && !c.includes("近一年合计"));
+ok("每周/累计带数值标注", c.includes("ust-gh-val") && c.includes("fmtDurationShort(x.sum)"));
 ok("三榜挂载在会话统计之后", c.indexOf("element(SessionsView,") < c.indexOf("element(TopBoards, { insights: data.insights })"));
 
 section("客户端：热力图指标与三视图");

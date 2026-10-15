@@ -435,12 +435,7 @@ body[data-ds-dark-theme] .ust-gh-lv3 { fill: #4AA3DC; }
 body[data-ds-dark-theme] .ust-gh-lv4 { fill: #7CC4F0; }
 .ust-gh-axis { fill: var(--faint, #86857F); font-size: 10px; font-family: inherit; }
 .ust-gh-scale { display: flex; align-items: center; gap: 4px; }
-/* 热力图标题行右侧的年度概况：填充标题行留白，口径为最近一年 */
-.ust-gh-stats { display: flex; align-items: baseline; gap: 22px; flex-wrap: wrap; }
-.ust-gh-stat { min-width: 0; }
-.ust-gh-stat-lab { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
-.ust-gh-stat-val { margin-top: 2px; font-size: 15px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.ust-block-head .ust-gh-scale { margin: 0 0 0 auto; }
+/* 色阶已移到图表下方，标题行不再有年度概况 */
 .ust-gh-sw { width: 11px; height: 11px; border-radius: 2.5px; display: inline-block; }
 
 /* ── 热力图：指标单选 + 视图切换 + 每周/累计图 ───────────── */
@@ -459,6 +454,10 @@ body[data-ds-dark-theme] .ust-gh-mbtn.active, body[data-ds-dark-theme] .ust-gh-v
 .ust-gh-bar { fill: var(--c3); }
 .ust-gh-line { stroke: var(--c3); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .ust-gh-tip { margin-top: 6px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: center; }
+/* 每周 / 累计图上的数值标注 */
+.ust-gh-val { font-size: 9.5px; font-weight: 600; fill: var(--muted); paint-order: stroke; stroke: var(--surface); stroke-width: 2px; }
+/* 色阶移到底部后居中显示，与图表同宽 */
+.ust-gh-scale--foot { justify-content: center; margin-top: 10px; }
 
 /* ── 活动洞察（默认收起） ────────────────────────────────── */
 .ust-insight { margin: 4px 0 14px; }
@@ -482,8 +481,9 @@ body[data-ds-dark-theme] .ust-gh-mbtn.active, body[data-ds-dark-theme] .ust-gh-v
 .ust-insight-v { font-size: 12.5px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
 
 /* ── 插件 / MCP / Skill 三榜 TOP5 ────────────────────────── */
-.ust-top { display: flex; gap: 32px; flex-wrap: wrap; }
-.ust-top-col { flex: 1 1 240px; min-width: 0; }
+/* 三榜同一水平线：grid 等宽三列，列顶对齐、行高一致 */
+.ust-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 32px; align-items: start; }
+.ust-top-col { min-width: 0; }
 .ust-top-title { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
 .ust-top-row { display: flex; align-items: baseline; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--rule); }
 .ust-top-row:last-child { border-bottom: 0; }
