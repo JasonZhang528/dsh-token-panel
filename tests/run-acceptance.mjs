@@ -120,7 +120,7 @@ ok("按天输出会话明细", h.includes("const sessions = [...(d.bySession || 
 ok("按天输出供应商明细", h.includes("const providers = [...(d.byProvider || new Map()).entries()]"));
 ok("按天输出消息数", h.includes("messages: d.messages"));
 ok("会话名取自 session/title 事件", h.includes('case "session/title":') && h.includes("sessionTitle = ev.data.title.trim()"));
-ok("缓存带 schemaVersion", h.includes("const CACHE_SCHEMA_VERSION = 5") && h.includes("schemaVersion: CACHE_SCHEMA_VERSION"));
+ok("缓存带 schemaVersion", h.includes("const CACHE_SCHEMA_VERSION = 6") && h.includes("schemaVersion: CACHE_SCHEMA_VERSION"));
 ok("旧 schemaVersion 缓存不采用", h.includes("j.schemaVersion === CACHE_SCHEMA_VERSION"));
 
 section("客户端：日期范围过滤（Token用量统计以下）");
@@ -186,7 +186,7 @@ ok("模型汇总保留四件套", c.includes("function modelTotalsIn(days, wnd)"
 ok("其他桶合并四件套", c.includes("const sumMetrics = (rows) =>") && c.includes("...sumMetrics(tail)"));
 ok("列表显示缓存命中量", c.includes('className: "ust-model-hit" }, fmtLarge(s.cacheRead)'));
 ok("列表显示命中率", c.includes('className: "ust-model-rate" }, fmtPct(hitRateOf(s))'));
-ok("圆环 tooltip 含命中率", c.includes('"命中 " + fmtFull(s.cacheRead || 0) + " · 命中率 " + fmtPct(hitRateOf(s))'));
+ok("圆环 tooltip 含命中率", c.includes('"缓存命中 " + fmtLarge(s.cacheRead || 0) + " · 命中率 " + fmtPct(hitRateOf(s))'));
 ok("命中数据有样式", c.includes(".ust-model-hit {") && c.includes(".ust-model-rate {"));
 
 section("客户端：模型明细弹窗（会话 / 供应商共用）");
@@ -201,8 +201,12 @@ ok("弹窗输出模型命中率", c.includes("fmtPct(hitRateOf(m))"));
 
 section("客户端：柱顶数值标签");
 ok("每根柱输出数值", c.includes('className: "ust-bar-val"') && c.includes('fmtLarge(v.total)'));
+// 回归：刻度曾直接用原始峰值（9455万），标签落在零碎数值上。
+// 现在按峰值量级向上取整到整档（94,550,000 → 95,000,000，即 9500万）。
+ok("刻度按峰值向上取整", c.includes("const rawPeak = Math.max(1, ...visTotals);") && c.includes("const stepU = mag / 10;") && c.includes("const up = Math.ceil(rawPeak / stepU) * stepU;"));
 ok("标签渲染进 svg", c.includes('grid, xAxis, bars, barLabels, peakMark,'));
-ok("密集时按步长稀疏", c.includes('const labelStride = Math.max(1, Math.ceil(BAR_LABEL_W / Math.max(1, effStep)));'));
+ok("逐根柱标数值不抽稀", !c.includes("labelStride") && c.includes("const cramped = colStep < BAR_LABEL_W;"));
+ok("密集时降字号不隐藏", c.includes('className: "ust-bar-val" + (cramped ? " ust-bar-val--sm" : "")') && c.includes(".ust-bar-val--sm { font-size: 9px;"));
 ok("峰值柱不重复标数值", c.includes('if (!(v.total > 0) || i === peakIdx) return null;'));
 ok("零用量柱不标数值", c.includes('!(v.total > 0)'));
 ok("标签样式已定义", c.includes('.ust-bar-val {') && c.includes('stroke: var(--surface); stroke-width: 2.5px;'));
@@ -221,7 +225,12 @@ section("客户端：时长列 / 洞察 / 三榜");
 ok("时长格式化", c.includes("function fmtDuration(ms)") && c.includes("function fmtDurationShort(ms)"));
 ok("会话表含时长列", c.includes('element("th", { className: "ust-tblNum" }, "时长")') && c.includes("fmtDuration(r.durationMs)"));
 ok("洞察默认收起", c.includes("function Insights({ insights, sessionCount, messageCount })") && c.includes("const [open, setOpen] = react.useState(false);"));
-ok("洞察按钮居中且双箭头", c.includes("ust-insight-toggle") && c.includes("ust-insight-chev") && c.includes('element("span", null, "›")'));
+ok("洞察头为区块标题式", c.includes("ust-insight-head") && c.includes('className: "ust-h2" }, "活动洞察"') && c.includes("ust-insight-sub"));
+ok("洞察折叠用双 chevron 朝下", c.includes('const IconChevronDown2 = () => icon(["M7 6l5 5 5-5", "M7 12l5 5 5-5"]);') && c.includes("element(IconChevronDown2)"));
+ok("展开时整体翻转", c.includes(".ust-insight.is-open .ust-insight-chev { transform: rotate(180deg); }"));
+ok("chevron 为圆形热区", c.includes(".ust-insight-chev {") && c.includes("border-radius: 999px;"));
+ok("展开体淡入", c.includes("ust-metrics ust-insight-body ust-fade"));
+ok("洞察展开体为概览卡", c.includes("ust-metrics ust-insight-body") && c.includes('className: "ust-metric-value" }, v'));
 ok("三榜 TOP5",
   c.includes("function TopBoards({ insights })")
   && c.includes('["最常用插件", ins.topPlugins || []],')
@@ -248,8 +257,9 @@ section("客户端：热力图指标与三视图");
 ok("Token/时长单选", c.includes('["token", "Token"], ["time", "时长"]') && c.includes("setMetric(id)"));
 ok("每日/每周/累计三视图",
   c.includes('["day", "每日"], ["week", "每周"], ["cum", "累计"]')
-  && /function HeatTrend\(\{ cells, metric, fmtMetric, view/.test(c));
-ok("提示随指标切换", c.includes("fmtMetric(metricOf(c0))") && c.includes("view === \"cum\" ? \"累计 \" : \"本周 \""));
+  && /function HeatTrend\(\{ cells, metric, view, tipRow, tipHead/.test(c));
+// 双 tooltip 已废弃：SVG 原生 <title> 与结构化弹窗二选一，只保留后者
+ok("提示随指标切换", c.includes("fmtMetric(metricOf(c0))") === false && c.includes('view === "cum" ? "累计 Token" : "Token 用量"'));
 
 section("客户端：模型配色统一");
 ok("共享配色序号", c.includes("function modelRanksIn(days, wnd)") && c.includes("function colorVarFor(model, ranks)"));
@@ -322,9 +332,11 @@ ok("总量列定宽", c.includes(".ust-model-sub { width: 72px; }"));
 ok("占比列定宽", c.includes(".ust-model-val { width: 40px; }"));
 ok("命中率列定宽", c.includes(".ust-model-rate {") && c.includes("width: 42px"));
 
-section("客户端：热力图色阶去文字");
-ok("色阶恢复少/多标注", c.includes('"ust-scale-lab" }, "少"') && c.includes('"ust-scale-lab" }, "多"'));
+section("客户端：热力图色阶只留色块");
+ok("色阶保留少/多标注", c.includes('"ust-scale-lab" }, "少"') && c.includes('"ust-scale-lab" }, "多"'));
 ok("色阶方块保留", c.includes('className: "ust-gh-sw ust-gh-lv" + lv'));
+ok("色块后无文字说明", !c.includes("ust-gh-scale-val"));
+ok("区间改挂 title", c.includes("title: legendRanges ? legendRanges[lv] : \"\","));
 
 
 
@@ -338,13 +350,16 @@ ok("缓存命中第二行为 TOKENS", c.includes('label: "缓存命中", value: 
 {
   const iToken = c.indexOf('label: "窗口 Token"');
   const iMsg = c.indexOf('label: "窗口消息"');
-  ok("窗口 Token 排在窗口消息之后", iToken > iMsg && iMsg > 0);
+  ok("窗口 Token 排在窗口消息之前", iToken > 0 && iMsg > iToken);
 }
 // 3) 活动洞察与 TOP5 按日期区间筛选
 ok("宿主按天下发洞察计数", h.includes("day.insights") && h.includes("bumpDay"));
 ok("洞察随窗口合并", c.includes("function insightsIn(days, wnd, all)") && c.includes("const winInsights = insightsIn(days, wnd, data.insights)"));
 ok("洞察挂载用 winInsights", c.includes("element(Insights, { insights: winInsights") && c.includes("element(TopBoards, { insights: winInsights })"));
-ok("宿主 schema 升至 5", h.includes("const CACHE_SCHEMA_VERSION = 5"));
+ok("宿主 schema 升至 6", h.includes("const CACHE_SCHEMA_VERSION = 6"));
+// 回归：MCP 工具（mcp__<server>__<tool>）曾因「非核心工具即插件」的判据
+// 同时进插件榜与 MCP 榜，插件榜因此出现 mcp__siyuan__http_request 之类怪名。
+ok("MCP 工具不计入插件榜", h.includes("const asPlugin = !CORE_TOOLS.has(tn) && !srv;") && !h.includes("const isPlugin = !CORE_TOOLS.has(tn);"));
 // 4) TOP5 序号徽标：前三名金银铜
 ok("TOP5 序号分梯队", c.includes("ust-top-rank is-gold") || (c.includes('" is-gold"') && c.includes('" is-silver"') && c.includes('" is-bronze"')));
 ok("序号徽标样式已定义", c.includes(".ust-top-rank.is-gold") && c.includes(".ust-top-rank.is-silver") && c.includes(".ust-top-rank.is-bronze"));
@@ -354,13 +369,21 @@ ok("供应商徽标内置品牌标记", c.includes("const PROVIDER_BRANDS = {") 
 ok("未收录供应商回落首字母", c.includes('String(name || "?").slice(0, 1).toUpperCase()'));
 ok("品牌匹配兼容名称变体", c.includes("function providerBrandOf(name)") && c.includes("n.includes(k)"));
 ok("品牌标记为内联 SVG", c.includes("ust-provLogo is-brand") && c.includes('viewBox: "0 0 24 24", fill: "currentColor"'));
+ok("徽标统一浅灰块面", c.includes(".ust-provLogo {") && c.includes("background: #F0EFEC;") && c.includes("ust-provLogo is-fallback") && !c.includes('background: color || "var(--ink)"'));
 // tip 数字走万 / 亿量级
 ok("tip Token 用万/亿量级", c.includes('tipRow("Token 用量", fmtLarge(c0.total) + " tokens")') && c.includes('tipRow(view === "cum" ? "累计 Token" : "Token 用量", fmtLarge(x.sum) + " tokens")'));
+// 回归：柱状图/圆环 tip 曾输出裸千分位（63,701,235），且与万/亿量级重复显示，不够友好。
+// 现在所有「数量」类 tip 一律走 fmtLarge，不再出现 fmtFull。
+ok("柱状图 tip 合计为量级", c.includes('"合计 " + fmtLarge(visTotals[i]) + " tokens"'));
+ok("柱状图 tip 各模型为量级", c.includes('fmtLarge(values[i].vals[k])'));
+ok("圆环 tip 合计为量级", c.includes('"合计 " + fmtLarge(s.total) + " tokens · 占比 "'));
+ok("圆环 tip 命中为量级", c.includes('"缓存命中 " + fmtLarge(s.cacheRead || 0)'));
+ok("tip 内不使用裸千分位", !/fmtFull\((visTotals|values\[i\]|s\.total|s\.cacheRead)/.test(c));
 // 旧宿主降级：无天级 insights 时退回全历史，避免榜单整块消失
 ok("洞察降级兼容旧宿主", c.includes("const hasDayLevel = (days || []).some((d) => d && d.insights)") && c.includes("if (!keys.length || !hasDayLevel) return all || {};"));
 ok("徽标样式已定义", c.includes(".ust-provLogo") && c.includes(".ust-provCell"));
 // 6) 每周/累计 tip 结构化
-ok("每周 tip 结构化", c.includes("function HeatTrend({ cells, metric, fmtMetric, view, tipRow, tipHead") && c.includes("const weekTip = (x) => ["));
+ok("每周 tip 结构化", c.includes("function HeatTrend({ cells, metric, view, tipRow, tipHead") && c.includes("const weekTip = (x) => ["));
 ok("累计视图带命中带", c.includes("className: \"ust-hitband\"") && c.includes("series.map((x, i) => element(\"rect\", {"));
 ok("注册 /api/usage-stats 路由", h.includes('path: "/api/usage-stats"'));
 ok("自行通过信任栅栏", h.includes("requestRejection"));

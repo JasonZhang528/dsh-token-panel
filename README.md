@@ -6,7 +6,7 @@
 
 **覆盖：全历史会话扫描 × 用量柱状图 × 模型刻度环 × 活跃热力图（三视图） × 会话与供应商统计 × 活动洞察 × 插件/MCP/Skill 榜 × 深浅双主题**
 
-[![Version](https://img.shields.io/badge/Version-v0.1.2-1D5FD0?style=for-the-badge)](package.json)
+[![Version](https://img.shields.io/badge/Version-v0.1.3-1D5FD0?style=for-the-badge)](package.json)
 [![DSH Plugin](https://img.shields.io/badge/DSH-Plugin-0E7C86?style=for-the-badge)](#安装)
 [![图表](https://img.shields.io/badge/图表-手写SVG-F59E0B?style=for-the-badge)](#设计与实现)
 [![License](https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge)](#许可与致谢)

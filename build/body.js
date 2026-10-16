@@ -146,6 +146,9 @@ window.__ModuleLoader__.load({
 		const IconMail = () => icon(["M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z", "M22 6l-10 7L2 6"]);
 		const IconRefresh = () => icon(["M23 4v6h-6", "M1 20v-6h6", "M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"]);
 		const IconClose = () => icon(["M18 6L6 18", "M6 6l12 12"]);
+		// 折叠指示：双 chevron 朝下（即 `>>` 旋转 90° 的形态）。
+		// 两枚折线竖向堆叠，收起点向下、展开整体翻转朝上，是通用的「可展开」语义。
+		const IconChevronDown2 = () => icon(["M7 6l5 5 5-5", "M7 12l5 5 5-5"]);
 
 		// ---------- 供应商品牌标记（内置，随包发布，不依赖外部图标资源） ----------
 		// 每个供应商给一个自绘 SVG 标记 + 品牌色：形状取该供应商最具辨识度的符号，
@@ -182,22 +185,24 @@ window.__ModuleLoader__.load({
 			}
 			return null;
 		}
-		// 供应商徽标：命中品牌则画内置 SVG；否则回落首字母圆角块
+		// 供应商徽标：统一块面——同一块浅灰圆角底（20px，与 TOP5 序号徽标同阶），
+		// 命中品牌画品牌色内联 SVG，未收录画供应商主题色首字母。
+		// 不再用深色实心块：整页是浅色细线语言，一列里深浅混排会显得突兀。
 		function ProviderBadge({ name, color }) {
 			const brand = providerBrandOf(name);
 			if (brand) {
 				return element("span", {
 					className: "ust-provLogo is-brand",
-					style: { color: brand.color, background: "transparent" },
+					style: { color: brand.color },
 					"aria-hidden": "true", title: name,
 				}, element("svg", {
 					viewBox: "0 0 24 24", fill: "currentColor", stroke: "none",
-					width: 18, height: 18,
+					width: 14, height: 14,
 				}, brand.paths.map((d, i) => element("path", { key: i, d }))));
 			}
 			return element("span", {
-				className: "ust-provLogo",
-				style: { background: color || "var(--ink)" },
+				className: "ust-provLogo is-fallback",
+				style: { color: color || "var(--ink)" },
 				"aria-hidden": "true", title: name,
 			}, String(name || "?").slice(0, 1).toUpperCase());
 		}
@@ -570,10 +575,6 @@ window.__ModuleLoader__.load({
 				(c) => (metric === "time" ? (c.durationMs || 0) : (c.total || 0)),
 				[metric],
 			);
-			const fmtMetric = react.useCallback(
-				(v) => (metric === "time" ? (v > 0 ? fmtDuration(v) : "无记录") : fmtFull(v) + " tokens"),
-				[metric],
-			);
 			const model = react.useMemo(() => {
 				const map = new Map();
 				(days || []).forEach((d) => map.set(d.date, d));
@@ -714,6 +715,7 @@ window.__ModuleLoader__.load({
 								)),
 								// 一格两层：下层着色、上层透明命中。命中与着色解耦，
 								// 事件由 svg 容器原生委托，格子只带 data-key。
+								// 注意：命中层不放 <title>——原生 tooltip 会与结构化弹窗双出。
 								model.cells.map((c0) => [
 									element("rect", {
 										key: "c" + c0.key,
@@ -725,35 +727,34 @@ window.__ModuleLoader__.load({
 										className: "ust-hitcell",
 										"data-key": c0.key,
 										x: cx(c0.col), y: cy(c0.row), width: CELL, height: CELL,
-										children: element("title", null, fmtDayLabel(c0.key) + " · " + fmtMetric(metricOf(c0))),
 									}),
 								]),
 							),
 						)
 						// ── 每周 / 累计视图：柱状与折线，共用同一套指标口径 ──
 						: element(HeatTrend, {
-							cells: model.cells, metric: metric, fmtMetric: fmtMetric, view: view,
+							cells: model.cells, metric: metric, view: view,
 							tipRow: tipRow, tipHead: tipHead, fmtDayLabel: fmtDayLabel, fmtDuration: fmtDuration,
 							placeTip: placeTip, clearTip: clearTip,
 						}),
 				),
-				// 图例置底：颜色逐步加深，每档旁标出数值区间。
+				// 图例置底：只给「少 → 多」的色阶，色块后不逐档标数值区间。
+				// 区间信息保留在色块的 title 上——不占视觉，悬停仍可查。
 				// 格子视图用五档色阶；每周柱 / 累计折线是单色，改给单色图例，避免误导。
 				view === "day"
 					? element("div", { className: "ust-gh-scale ust-gh-scale--foot" },
 						element("span", { className: "ust-scale-lab" }, "少"),
 						[0, 1, 2, 3, 4].map((lv) => element("span", {
-							key: lv, className: "ust-gh-scale-item",
+							key: lv,
+							className: "ust-gh-sw ust-gh-lv" + lv,
 							title: legendRanges ? legendRanges[lv] : "",
-						},
-							element("span", { className: "ust-gh-sw ust-gh-lv" + lv }),
-							legendRanges ? element("span", { className: "ust-gh-scale-val" }, legendRanges[lv]) : null,
-						)),
+						})),
 						element("span", { className: "ust-scale-lab" }, "多"),
 					)
+					// 每周 / 累计是单色图：方块本身无深浅含义，必须带一句释义
 					: element("div", { className: "ust-gh-scale ust-gh-scale--foot" },
 						element("span", { className: "ust-gh-sw", style: { background: "var(--c3)" } }),
-						element("span", { className: "ust-gh-scale-val" },
+						element("span", { className: "ust-gh-scale-note" },
 							(metric === "time" ? "时长" : "Token") + (view === "cum" ? " · 累计折线" : " · 每周柱形")),
 					),
 				tipEl,
@@ -761,7 +762,7 @@ window.__ModuleLoader__.load({
 		}
 		// ---------- 热力图：每周柱状 / 累计折线 ----------
 		// 与每日格同源（同一份 cells），切换视图不改变口径，只是换一种聚合方式
-		function HeatTrend({ cells, metric, fmtMetric, view, tipRow, tipHead, fmtDayLabel, fmtDuration, placeTip, clearTip }) {
+		function HeatTrend({ cells, metric, view, tipRow, tipHead, fmtDayLabel, fmtDuration, placeTip, clearTip }) {
 			const [hover, setHover] = react.useState(null);
 			const W = 1120, H = 180, PAD_L = 54, PAD_R = 12, PAD_T = 16, PAD_B = 26;
 			const plotW = W - PAD_L - PAD_R, plotH = H - PAD_T - PAD_B;
@@ -786,7 +787,6 @@ window.__ModuleLoader__.load({
 			const step = plotW / Math.max(1, series.length);
 			const barW = Math.max(2, Math.min(step * 0.7, 18));
 			const yOf = (v) => PAD_T + plotH - (v / maxV) * plotH;
-			const label = (x) => (x.first.month + "/" + x.first.dom);
 			const linePath = series.map((x, i) => (i ? "L" : "M") + (PAD_L + step * (i + 0.5)).toFixed(1) + " " + yOf(x.sum).toFixed(1)).join(" ");
 			// 结构化提示：与每日格同一套「小标题 + 标签行」，口径随所选指标切换
 			const isTime = metric === "time";
@@ -815,7 +815,6 @@ window.__ModuleLoader__.load({
 							onMouseEnter: (e) => { setHover(i); placeTip(e, element("div", { className: "ust-tip-block" }, weekTip(x))); },
 							onMouseMove: (e) => placeTip(e, element("div", { className: "ust-tip-block" }, weekTip(x))),
 							onMouseLeave: () => { setHover(null); clearTip(); },
-							children: element("title", null, label(x) + " 起 · " + (view === "cum" ? "累计 " : "本周 ") + fmtMetric(x.sum)),
 						})),
 					// 数值标注：每周标柱顶、累计标末端点；仅标非零值，避免空周刷屏
 					view === "week"
@@ -848,34 +847,44 @@ window.__ModuleLoader__.load({
 				),
 			);
 		}
-		// ---------- 活动洞察（默认收起，点击展开） ----------
-		// 数据来自宿主 insights：工具 / Skill / MCP 计数与 TOP5；随日期区间筛选
+		// ---------- 活动洞察（默认收起，点标题行展开） ----------
+		// 交互：整行是展开开关——标题行左侧 h2 + 说明，右侧双 chevron 朝下；
+		// 展开后 chevron 翻转朝上，内容区淡入。键盘可聚焦，Enter / Space 触发。
+		// 数据来自宿主 insights：工具 / Skill / MCP 计数与 TOP5。
+		// 口径：聊天规模取全历史（宿主只下发全量），工具与扩展用量随日期区间筛选，
+		// 两者都在卡片说明行写明，读者不必猜。
 		function Insights({ insights, sessionCount, messageCount }) {
 			const [open, setOpen] = react.useState(false);
 			const ins = insights || {};
+			// 一卡一指标：大号数值 = 总量，说明行 = 口径或覆盖广度
 			const rows = [
-				["聊天总数", fmtFull(sessionCount || 0)],
-				["总消息数", fmtFull(messageCount || 0)],
-				["工具调用总数", fmtFull(ins.totalToolCalls || 0)],
-				["已探索工具", String(ins.distinctTools || 0) + " 种"],
-				["使用过 Skill", String(ins.distinctSkills || 0) + " 个 · " + fmtFull(ins.totalSkillUses || 0) + " 次"],
-				["使用过 MCP", String(ins.distinctMcp || 0) + " 个 · " + fmtFull(ins.totalMcpCalls || 0) + " 次"],
+				[IconChat, "聊天总数", fmtFull(sessionCount || 0), "全部历史"],
+				[IconMail, "总消息数", fmtFull(messageCount || 0), "全部历史"],
+				[IconBolt, "工具调用", fmtFull(ins.totalToolCalls || 0), "已探索 " + (ins.distinctTools || 0) + " 种"],
+				[IconTrend, "Skill 使用", fmtFull(ins.totalSkillUses || 0), "用过 " + (ins.distinctSkills || 0) + " 个"],
+				[IconToken, "MCP 调用", fmtFull(ins.totalMcpCalls || 0), "用过 " + (ins.distinctMcp || 0) + " 个"],
 			];
 			return element("div", { className: "ust-insight" + (open ? " is-open" : "") },
+				// 整行可点：视觉是标准区块标题，语义是展开开关
 				element("button", {
 					type: "button", className: "ust-insight-toggle",
 					"aria-expanded": open,
+					title: open ? "收起活动洞察" : "展开活动洞察",
 					onClick: () => setOpen((v) => !v),
 				},
-					element("span", null, "活动洞察"),
-					// 两枚向下的 chevron：展开后整体翻转朝上
-					element("span", { className: "ust-insight-chev", "aria-hidden": "true" },
-						element("span", null, "›"), element("span", null, "›")),
+					element("span", { className: "ust-insight-head" },
+						element("span", { className: "ust-h2" }, "活动洞察"),
+						element("span", { className: "ust-insight-sub" }, "工具 / Skill / MCP 的调用量与探索广度 · 随日期区间"),
+					),
+					// 双 chevron 圆形热区：悬停显底色，展开时整体翻转朝上
+					element("span", { className: "ust-insight-chev", "aria-hidden": "true" }, element(IconChevronDown2)),
 				),
-				open ? element("div", { className: "ust-insight-body" },
-					rows.map(([k, v]) => element("div", { key: k, className: "ust-insight-row" },
-						element("span", { className: "ust-insight-k" }, k),
-						element("span", { className: "ust-insight-v" }, v))),
+				open ? element("div", { className: "ust-metrics ust-insight-body ust-fade" },
+					rows.map(([Ico, k, v, sub]) => element("div", { key: k, className: "ust-metric" },
+						element("div", { className: "ust-metric-label" }, element(Ico), element("span", null, k)),
+						element("div", { className: "ust-metric-value" }, v),
+						element("div", { className: "ust-metric-sub" }, sub),
+					)),
 				) : null,
 			);
 		}
@@ -1205,14 +1214,36 @@ window.__ModuleLoader__.load({
 
 			const visible = series.map((s) => !hidden[s.model]);
 			const visTotals = values.map((v) => v.vals.reduce((a, b, i) => a + (visible[i] ? b : 0), 0));
-			const peakTotal = Math.max(1, ...visTotals);
+			// 刻度按峰值向上取整到「好看的整档」：如 94,553,214 → 95,000,000（刻度 9500万）。
+			// 取整档位取最高两位有效数字所在的量级（10 万 / 100 万 / 1000 万 …），
+			// 既让刻度标签落在整值上，又保证最高柱不贴顶（留 ~5% 余量）。
+			const rawPeak = Math.max(1, ...visTotals);
+			const peakTotal = (() => {
+				if (rawPeak <= 10) return Math.max(1, rawPeak);
+				const mag = Math.pow(10, Math.floor(Math.log10(rawPeak))); // 量级：1e7 → 10,000,000
+				const stepU = mag / 10;                                    // 档位：1e6（百万级）
+				const up = Math.ceil(rawPeak / stepU) * stepU;
+				// 恰好整除时给下一档，避免最高柱顶满格（贴住顶部网格线不好看）
+				return up === rawPeak ? up + stepU : up;
+			})();
 
 			const N = xData.length || 1;
 			// 极窄容器压缩左右留白，保证 svg 不超容器宽（避免横向溢出）
 			const narrow = (boxW || 400) < 380;
-			const PAD_L = narrow ? 30 : 40, PAD_R = narrow ? 6 : 10, PAD_T = 20, PAD_B = 34;
+			// 左留白只需容纳 Y 轴峰值刻度标签本身（右端贴轴、左端不越界），
+			// 否则长数值（如「3162.7万」）会在最左侧被裁。
+			// 让柱身避开刻度区的活交给下面的 innerL —— 只加 PAD_L 是无效的：
+			// 刻度贴轴、柱心也在轴上，两者会一起右移，间距纹丝不动。
+			const AXIS_LAB_W = narrow ? 44 : 50;
+			const PAD_L = AXIS_LAB_W + 8, PAD_R = narrow ? 6 : 10, PAD_T = 20, PAD_B = 34;
+			// 柱身内缩半个柱宽：首柱左缘贴住 Y 轴、末柱右缘不越右界。
+			// 否则柱心落在轴线上，左半身（最多 17px）会压住峰值刻度，末柱也会被裁。
+			// 注意只加大 PAD_L 治不了这个重叠——刻度贴轴、柱心也在轴上，两者同步右移。
+			const COL_INSET = 17; // = 柱宽上限 34 的一半
 			const avail = Math.max(120, boxW - PAD_L - PAD_R);
-			const step = N > 1 ? avail / (N - 1) : avail;
+			// 柱心跨度：可绘图区扣掉首尾各半个柱宽
+			const spanAvail = Math.max(40, avail - COL_INSET * 2);
+			const step = N > 1 ? spanAvail / (N - 1) : spanAvail;
 			// 刻度与柱顶数值都要逐格显示，步长下限按最宽标签取。
 			// 注意首尾刻度分别用 start / end 锚点，比中间多出约半个标签宽，故步长要按「整标签宽 + 半宽」留量：
 			//   时间轴「00:00」约 34px、日期轴「10 月 14 日」约 62px。
@@ -1221,16 +1252,20 @@ window.__ModuleLoader__.load({
 				? Math.max(14, narrow ? 48 : 56)
 				: Math.max(narrow ? 12 : 16, narrow ? 78 : 96);
 			const needScroll = N > 1 && step < minStep;
-			let plotW = needScroll ? (N - 1) * minStep : avail;
+			// plotW 是轴线全长：滚动时按步长铺开并补回两侧内缩
+			let plotW = needScroll ? (N - 1) * minStep + COL_INSET * 2 : avail;
 			// 不滚动时必须严丝合缝落在容器内（避免 1–2px 溢出触发横向滚动条）
 			if (!needScroll) plotW = Math.max(80, Math.min(plotW, (boxW || 400) - PAD_L - PAD_R));
 			const W = PAD_L + plotW + PAD_R;
 			const H = (boxW || 400) < 520 ? 168 : 200;
 			const baseY = H - PAD_B;
 			const topY = PAD_T;
-			const bandW = N > 1 ? (needScroll ? minStep : plotW / (N - 1)) : avail;
+			// 柱心实际可用的跨度（轴线两端各让出 COL_INSET）
+			const spanW = Math.max(20, plotW - COL_INSET * 2);
+			const colStep = N > 1 ? (needScroll ? minStep : spanW / (N - 1)) : spanW;
+			const bandW = colStep;
 			const barW = Math.max(3, Math.min(bandW * 0.62, 34));
-			const xc = (i) => (N > 1 ? PAD_L + i * (needScroll ? minStep : plotW / (N - 1)) : PAD_L + plotW / 2);
+			const xc = (i) => (N > 1 ? PAD_L + COL_INSET + i * colStep : PAD_L + COL_INSET + spanW / 2);
 			const y = (v) => baseY - (v / peakTotal) * (baseY - topY);
 
 			// 柱状图 Y 轴：只标峰值一档。基线本就是 0，再标一个「0」会与 X 轴首刻度挤在一起，
@@ -1268,23 +1303,33 @@ window.__ModuleLoader__.load({
 					element("rect", { className: "ust-hitband", x: xc(i) - bandW / 2, y: topY, width: bandW, height: baseY - topY }));
 			});
 
-			// 峰值标注：比普通数值更醒目，故该柱不再重复普通标签
+			// 峰值标注：比普通数值更醒目，故该柱不再重复普通标签。
+			// 柱顶距顶部网格线不足一行字（14px）时，柱顶上方放不下文字——
+			// 此时把标注移到柱体内部顶端（描边保证在任何段色上都可读），
+			// 而不是硬钳到图表顶部压住柱顶（曾与 Y 轴刻度、柱顶叠成一团）。
+			const peakTopGap = y(peakVal) - topY; // 柱顶到顶部网格线的余量
 			const peakMark = peakVal > 0 ? element("text", {
-				className: "ust-callout", x: xc(peakIdx), y: Math.max(topY + 10, y(peakVal) - 7),
-				textAnchor: peakIdx === 0 ? "start" : peakIdx === N - 1 ? "end" : "middle",
+				className: "ust-callout",
+				x: xc(peakIdx),
+				y: peakTopGap < 14 ? y(peakVal) + 15 : Math.max(topY + 12, y(peakVal) - 10),
+				textAnchor: "middle",
 			}, fmtLarge(peakVal)) : null;
 
-			// 柱顶数值：每根柱标出合计用量。
-			// 步长放不下一个数值时按步长稀疏，避免相邻文字互相压字；峰值另有更醒目的标注，此处跳过以免重复。
-			const effStep = needScroll ? minStep : (N > 1 ? plotW / (N - 1) : plotW);
-			const labelStride = Math.max(1, Math.ceil(BAR_LABEL_W / Math.max(1, effStep)));
+			// 柱顶数值：每根柱顶都标出合计用量——「数量显示在柱子上面」是明确需求，
+			// 不再按步长抽稀（曾导致 4 根柱只标 1 根、22 根只标 6 根）。
+			// 防重叠改为按字号缩放：柱距放不下整串数值时降到 k 量级（fmtLarge 已是紧凑形态，
+			// 这里用字号 9px 的兜底类，比隐藏标签更可读）；峰值仍用更醒目的标注，此处跳过以免重复。
 			const barLabels = values.map((v, i) => {
 				if (!(v.total > 0) || i === peakIdx) return null;
-				if (i % labelStride !== 0 && i !== N - 1) return null;
+				const cramped = colStep < BAR_LABEL_W;
 				return element("text", {
-					key: "v" + i, className: "ust-bar-val",
-					x: xc(i), y: Math.max(topY + 9, y(v.total) - 6),
-					textAnchor: i === 0 ? "start" : i === N - 1 ? "end" : "middle",
+					key: "v" + i,
+					className: "ust-bar-val" + (cramped ? " ust-bar-val--sm" : ""),
+					// y 是文本基线：数字没有下伸部，但 bbox 底边比基线低约 3px（内部行距），
+					// 再加 2.5px 白描边会向外扩 1.25px——间隙 10px 才能保证视觉上真正悬在柱顶上方
+					x: xc(i), y: Math.max(topY + 12, y(v.total) - 10),
+					// 一律居中：柱心已内缩 17px，首柱居中后左缘不会压到 Y 轴刻度
+					textAnchor: "middle",
 				}, fmtLarge(v.total));
 			});
 
@@ -1294,20 +1339,22 @@ window.__ModuleLoader__.load({
 				// 取所在滚动容器的位移，横向滚动后仍算得准
 				const holder = e.currentTarget.closest(".ust-plot");
 				const local = e.clientX - rect.left + (holder ? holder.scrollLeft : 0);
-				const i = needScroll
-					? Math.max(0, Math.min(N - 1, Math.round((local - PAD_L) / minStep)))
-					: Math.max(0, Math.min(N - 1, Math.round(((local - PAD_L) / plotW) * (N - 1))));
+				// 反算柱索引：与 xc(i) 同一套几何（起点含 COL_INSET，步长用 colStep）
+				const i = Math.max(0, Math.min(N - 1, Math.round((local - PAD_L - COL_INSET) / Math.max(1, colStep))));
 				setHover(i);
 				const rows = series.map((s, k) => visible[k]
 					? element("div", { key: s.model, className: "ust-tip-row" },
 						element("span", { className: "ust-tip-key" },
 							element("span", { className: "ust-tip-swatch", style: { background: cVar(s.rank) } }),
 							element("span", null, s.model)),
-						element("span", { className: "ust-tip-val" }, fmtFull(values[i].vals[k])))
+						// 模型分项同样走万 / 亿量级，与合计行同一套读法
+						element("span", { className: "ust-tip-val" }, fmtLarge(values[i].vals[k])))
 					: null);
 				placeTip(e, element("div", null,
 					element("div", { className: "ust-tip-title" }, (isHour ? fmtDayLabel(singleDate) + " " : "") + xLabel(xData[i])),
-					element("div", { className: "ust-tip-body" }, fmtFull(visTotals[i]) + " tokens · " + fmtLarge(visTotals[i])),
+					// 数量一律走「万 / 亿」量级：裸千分位（63,701,235）要逐位数位，
+					// 且与下面的量级值重复显示。小于 1 万时 fmtLarge 本就是精确值，不损失信息。
+					element("div", { className: "ust-tip-body" }, "合计 " + fmtLarge(visTotals[i]) + " tokens"),
 					rows,
 				));
 			};
@@ -1352,10 +1399,17 @@ window.__ModuleLoader__.load({
 			const [boxRef, boxW] = useMeasure();
 			const [active, setActive] = react.useState(null);
 			const [placeTip, clearTip, tipEl] = useTip();
+			// 模型列表分页：超过 5 条自动分页（刻度环本身最多 5 段，此为「其他」桶还原后的明细数）
+			const [page, setPage] = react.useState(0);
+			const PAGE_SIZE = 5;
 
 			const list = modelTotalsIn(days, wnd);
 			const sum = list.reduce((s, m) => s + m.total, 0);
 			const segs = foldModels(list, 5);
+			// 页码安全：数据变化（切区间 / 刷新）后页码可能越界，钳到有效范围
+			const pageCount = Math.max(1, Math.ceil(segs.length / PAGE_SIZE));
+			const safePage = Math.min(page, pageCount - 1);
+			const pageRows = segs.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 			const TICKS = 100;
 			let used = 0;
 			const counts = segs.map((m) => {
@@ -1408,8 +1462,9 @@ window.__ModuleLoader__.load({
 					// 命中扇区：从本段第一刻中心到末刻中心，左右各扩半格 = 整圈无缝
 					const tip = element("div", null,
 						element("div", { className: "ust-tip-title" }, s.model),
-						element("div", { className: "ust-tip-body" }, fmtFull(s.total) + " tokens · " + (sum > 0 ? (s.total / sum * 100).toFixed(1) : "0") + "%"),
-						element("div", { className: "ust-tip-body" }, "命中 " + fmtFull(s.cacheRead || 0) + " · 命中率 " + fmtPct(hitRateOf(s))),
+						// 数量统一万 / 亿量级：不再给裸千分位，也不与量级值重复
+						element("div", { className: "ust-tip-body" }, "合计 " + fmtLarge(s.total) + " tokens · 占比 " + (sum > 0 ? (s.total / sum * 100).toFixed(1) : "0") + "%"),
+						element("div", { className: "ust-tip-body" }, "缓存命中 " + fmtLarge(s.cacheRead || 0) + " · 命中率 " + fmtPct(hitRateOf(s))),
 						s.children ? element("div", { className: "ust-tip-body" }, "含 " + s.children.map((c) => c.model).join("、")) : null,
 					);
 					const show = (e) => { setActive(s.model); placeTip(e, tip); };
@@ -1453,7 +1508,7 @@ window.__ModuleLoader__.load({
 									element("span", { className: "ust-model-rate" }, "命中率"),
 									element("span", { className: "ust-model-val" }, "占比"))),
 							element("ul", { className: "ust-models" },
-							segs.map((s) => element("li", {
+							pageRows.map((s) => element("li", {
 								key: s.model,
 								className: "ust-model",
 								style: { opacity: active && active !== s.model ? 0.45 : 1 },
@@ -1471,7 +1526,8 @@ window.__ModuleLoader__.load({
 									element("span", { className: "ust-model-sub" }, fmtLarge(s.total)),
 									element("span", { className: "ust-model-rate" }, fmtPct(hitRateOf(s))),
 									element("span", { className: "ust-model-val" }, (sum > 0 ? Math.round((s.total / sum) * 100) : 0) + "%")),
-							)),
+						)),
+							segs.length > PAGE_SIZE ? element(Pager, { page: safePage, pageCount, total: segs.length, unit: "模型", onChange: setPage }) : null,
 						),
 					),
 					),
@@ -1652,20 +1708,19 @@ window.__ModuleLoader__.load({
 				element("div", { className: "ust-metrics" },
 					singleDayWindow ? null : element(Metric, { icon: element(IconCalendar), label: "活跃天数", value: String(stats.activeDays) + " 天", sub: "有用量的天" }),
 					singleDayWindow ? null : element(Metric, { icon: element(IconTrend), label: "日均", value: fmtLarge(avgPerActive), sub: "按活跃天平均" }),
+					// 第二行统一为 TOKENS 文本（不带数字）：全量数值已在 tooltip/表格里，卡面保持干净
+					element(Metric, { icon: element(IconToken), label: "窗口 Token", value: fmtLarge(stats.total), sub: "TOKENS" }),
+					element(Metric, { icon: element(IconToken), label: "缓存命中", value: fmtLarge(winStats.cacheRead), sub: "TOKENS" }),
+					element(Metric, { icon: element(IconTrend), label: "命中率", value: fmtPct(winStats.rate), sub: "缓存命中 / 当期满量" }),
+					element(Metric, { icon: element(IconBolt), label: "最常用模型", value: topName, sub: topSub, text: true }),
+					// 会话 / 消息计数卡放行末：Token 类指标优先展示
 					element(Metric, { icon: element(IconChat), label: "窗口会话", value: String(winStats.sessions), sub: winScoped } ),
-					// 窗口消息：第二行给「窗口会话平均每会话消息数」，比事件类型名更可读；
-					// 单会话窗口时均值无意义，改给口径说明
 					element(Metric, {
 						icon: element(IconMail), label: "窗口消息", value: fmtFull(winStats.messages),
 						sub: winStats.sessions > 1
 							? "均 " + fmtFull(Math.round((winStats.messages || 0) / winStats.sessions)) + " 条 / 会话"
 							: "按 assistant 消息计",
 					}),
-					// 第二行统一为 TOKENS 文本（不带数字）：全量数值已在 tooltip/表格里，卡面保持干净
-					element(Metric, { icon: element(IconToken), label: "窗口 Token", value: fmtLarge(stats.total), sub: "TOKENS" }),
-					element(Metric, { icon: element(IconToken), label: "缓存命中", value: fmtLarge(winStats.cacheRead), sub: "TOKENS" }),
-					element(Metric, { icon: element(IconTrend), label: "命中率", value: fmtPct(winStats.rate), sub: "缓存命中 / 当期满量" }),
-					element(Metric, { icon: element(IconBolt), label: "最常用模型", value: topName, sub: topSub, text: true }),
 				),
 				// 概览数据之后：活动洞察（默认收起；随日期区间筛选）
 				element(Insights, { insights: winInsights, sessionCount: data.sessionCount, messageCount: data.messageCount }),
