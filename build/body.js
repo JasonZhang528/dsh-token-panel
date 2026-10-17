@@ -1108,6 +1108,133 @@ window.__ModuleLoader__.load({
 				),
 			);
 		}
+		// ---------- 会话用量详情（会话头按钮 → 浮层） ----------
+		// 数据完全复用主页已缓存的 data.days[].sessions（按天桶），本地聚合出两个口径：
+		//   今天 = dateKey(Date.now()) 当天的桶；全历史 = 所有天的桶合并。
+		// 展示与用量统计「今天」信息同构：概览卡（Token / 轮次 / 消息 / 时长 / 命中率）+ 按模型明细表。
+		function sessionUsageAggregate(days, sessionId, onlyDate) {
+			const acc = { total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0, messages: 0, durationMs: 0, byModel: {} };
+			let lastTime = null;
+			let daysSeen = 0;
+			(days || []).forEach((d) => {
+				if (onlyDate && d.date !== onlyDate) return;
+				(d.sessions || []).forEach((s) => {
+					if (s.id !== sessionId) return;
+					daysSeen += 1;
+					acc.total += s.total || 0;
+					acc.input += s.input || 0;
+					acc.output += s.output || 0;
+					acc.cacheRead += s.cacheRead || 0;
+					acc.cacheWrite += s.cacheWrite || 0;
+					acc.turns += s.turns || 0;
+					acc.messages += s.messages || 0;
+					acc.durationMs += s.durationMs || 0;
+					if (s.lastTime && (!lastTime || s.lastTime > lastTime)) lastTime = s.lastTime;
+					(s.byModel || []).forEach((m) => {
+						const bm = acc.byModel[m.model] || { model: m.model, color: m.color, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+						bm.input += m.input || 0; bm.output += m.output || 0;
+						bm.cacheRead += m.cacheRead || 0; bm.cacheWrite += m.cacheWrite || 0;
+						bm.total += m.total || 0;
+						if (!bm.color && m.color) bm.color = m.color;
+						acc.byModel[m.model] = bm;
+					});
+				});
+			});
+			return { ...acc, lastTime, activeDays: daysSeen, byModelList: Object.values(acc.byModel).sort((a, b) => b.total - a.total) };
+		}
+		function SessionUsageModal({ sessionId, title, onClose }) {
+			react.useEffect(() => {
+				const onKey = (e) => { if (e.key === "Escape") onClose(); };
+				window.addEventListener("keydown", onKey);
+				return () => window.removeEventListener("keydown", onKey);
+			}, [onClose]);
+			const [closing, setClosing] = react.useState(false);
+			const close = () => { setClosing(true); setTimeout(onClose, 180); };
+			const [data, setData] = react.useState(null);
+			const [error, setError] = react.useState(null);
+			react.useEffect(() => {
+				let cancelled = false;
+				(async () => {
+					try {
+						const res = await fetch("/api/usage-stats", { credentials: "same-origin" });
+						if (!res.ok) throw new Error("HTTP " + res.status);
+						const json = await res.json();
+						if (!json || json.ok === false) throw new Error((json && json.error) || "响应异常");
+						if (!cancelled) setData(json);
+					} catch (e) {
+						if (!cancelled) setError(String((e && e.message) || e));
+					}
+				})();
+				return () => { cancelled = true; };
+			}, []);
+			const todayKey = dateKey(Date.now());
+			const days = (data && data.days) || [];
+			const today = data ? sessionUsageAggregate(days, sessionId, todayKey) : null;
+			const all = data ? sessionUsageAggregate(days, sessionId, null) : null;
+			const metricCard = (label, value, sub) => element("div", { key: label, className: "ust-metric" },
+				element("div", { className: "ust-metric-label" }, element("span", null, label)),
+				element("div", { className: "ust-metric-value is-text" }, value),
+				element("div", { className: "ust-metric-sub" }, sub));
+			const section = (label, agg) => {
+				if (!agg) return null;
+				const hitRate = hitRateOf(agg);
+				const models = agg.byModelList;
+				const mSum = models.reduce((s, m) => s + (m.total || 0), 0);
+				return element("div", { key: label },
+					element("div", { className: "ust-sub", style: { margin: "10px 0 8px", fontWeight: 650, color: "var(--ink)" } }, label),
+					element("div", { className: "ust-metrics" },
+						metricCard("Token 用量", fmtLarge(agg.total) + " tokens", "本会话累计"),
+						metricCard("轮次", String(agg.turns || 0), "对话轮次"),
+						metricCard("消息", fmtFull(agg.messages || 0), "assistant / user 消息"),
+						metricCard("活跃时长", fmtDuration(agg.durationMs || 0), "分段活跃口径"),
+						metricCard("缓存命中", fmtLarge(agg.cacheRead || 0) + " tokens", "命中率 " + fmtPct(hitRate)),
+						metricCard("活跃天数", String(agg.activeDays || 0) + " 天", "有用量的天数"),
+					),
+					models.length > 0 ? element("div", { className: "ust-tblWrap", style: { marginTop: 10 } },
+						element("table", { className: "ust-tbl" },
+							element("thead", null, element("tr", null,
+								element("th", null, "模型"),
+								element("th", { className: "ust-tblNum" }, "输入"),
+								element("th", { className: "ust-tblNum" }, "输出"),
+								element("th", { className: "ust-tblNum" }, "缓存命中"),
+								element("th", { className: "ust-tblNum" }, "总量"),
+								element("th", { className: "ust-tblNum" }, "命中率"),
+								element("th", { className: "ust-tblNum" }, "占比"))),
+							element("tbody", null, models.map((m) => element("tr", { key: m.model },
+								element("td", null, element("div", { className: "ust-provCell" },
+									element("span", { className: "ust-dot", style: { background: m.color || "var(--ink)" } }),
+									element("span", { className: "ust-ellip", title: m.model }, m.model))),
+								element("td", { className: "ust-tblNum" }, fmtLarge(m.input)),
+								element("td", { className: "ust-tblNum" }, fmtLarge(m.output)),
+								element("td", { className: "ust-tblNum" }, fmtLarge(m.cacheRead)),
+								element("td", { className: "ust-tblNum" }, fmtLarge(m.total)),
+								element("td", { className: "ust-tblNum" }, fmtPct(hitRateOf(m))),
+								element("td", { className: "ust-tblNum" }, (mSum > 0 ? Math.round((m.total / mSum) * 100) : 0) + "%")))),
+						),
+					) : element("div", { className: "ust-placeholder" }, "该口径下本会话尚无用量记录"),
+				);
+			};
+			return element("div", { className: "ust-overlay" + (closing ? " is-closing" : "") },
+				element("div", { className: "ust-mask", "aria-hidden": "true", onClick: close }),
+				element("div", { className: "ust-panel ust-panel--narrow", role: "dialog", "aria-modal": "true", "aria-label": "会话用量" },
+					element("div", { className: "ust-panelHead" },
+						element("div", { className: "ust-panelTitleBox" },
+							element("h2", { className: "ust-panelTitle" }, "会话用量"),
+							element("p", { className: "ust-panelSub" }, (title || sessionId) + (data ? " · 数据更新于 " + fmtClock(data.generatedAt) : "")),
+						),
+						element("button", { type: "button", className: "ust-closeBtn", "aria-label": "关闭", title: "关闭", onClick: close }, element(IconClose)),
+					),
+					element("div", { className: "ust-panelBody" },
+						error ? element("div", { className: "ust-warn" }, "加载失败：" + error)
+							: !data ? element("div", { className: "ust-placeholder" }, "正在读取用量数据…")
+							: element("div", { className: "ust-root" },
+								section("今天", today),
+								section("全部历史", all),
+							),
+					),
+				),
+			);
+		}
 		// ---------- 供应商用量统计 ----------
 		function ProvidersView({ days, window: wnd, ranks }) {
 			const rows = react.useMemo(() => providersIn(days, wnd), [days, wnd]);
@@ -1851,6 +1978,101 @@ window.__ModuleLoader__.load({
 				name: "main",
 				key: PANEL_ID,
 			}, UsageStatsPage));
+			// 对话区「用量」tab：与原生 Chat / Trajectory 并列的视图。
+			// 参照 dsh-context 的实现方式：只挂 conversation.view，不注册会话头按钮。
+			// standardProps 含 sessionId，组件内自行拉 /api/usage-stats 并本地聚合。
+			ctx.slots.inject("conversation.view", () => ctx.slots.register({
+				name: "conversation.view",
+				id: PANEL_ID + ".usage",
+				order: 20,
+				label: () => "用量",
+			}, SessionUsageView));
+		}
+		// 对话区「用量」tab：注册为 conversation.view 视图（与原生 Chat / Trajectory 并列）。
+		// 参照 dsh-context 的实现：只挂 conversation.view，不挂会话头按钮；
+		// standardProps 含 sessionId，直接可读会话数据。
+		// 注意 hooks 必须在条件早退之前（否则 sessionId 有无两种渲染 hooks 数不一致，React 抛错）。
+		function SessionUsageView({ sessionId }) {
+			const [data, setData] = react.useState(null);
+			const [error, setError] = react.useState(null);
+			const [open, setOpen] = react.useState(true);
+			react.useEffect(() => {
+				if (!sessionId) return;
+				let cancelled = false;
+				(async () => {
+					try {
+						const res = await fetch("/api/usage-stats", { credentials: "same-origin" });
+						if (!res.ok) throw new Error("HTTP " + res.status);
+						const json = await res.json();
+						if (!json || json.ok === false) throw new Error((json && json.error) || "响应异常");
+						if (!cancelled) setData(json);
+					} catch (e) {
+						if (!cancelled) setError(String((e && e.message) || e));
+					}
+				})();
+				return () => { cancelled = true; };
+			}, [sessionId]);
+			if (!sessionId) return element("div", { className: "ust-placeholder" }, "打开一个会话后查看用量");
+			const todayKey = dateKey(Date.now());
+			const days = (data && data.days) || [];
+			const today = data ? sessionUsageAggregate(days, sessionId, todayKey) : null;
+			const all = data ? sessionUsageAggregate(days, sessionId, null) : null;
+			const metricCard = (label, value, sub) => element("div", { key: label, className: "ust-metric" },
+				element("div", { className: "ust-metric-label" }, element("span", null, label)),
+				element("div", { className: "ust-metric-value is-text" }, value),
+				element("div", { className: "ust-metric-sub" }, sub));
+			const section = (label, agg) => {
+				if (!agg) return null;
+				const models = agg.byModelList;
+				const mSum = models.reduce((s, m) => s + (m.total || 0), 0);
+				return element("div", { key: label },
+					element("div", { className: "ust-sub", style: { margin: "10px 0 8px", fontWeight: 650, color: "var(--ink)" } }, label),
+					element("div", { className: "ust-metrics" },
+						metricCard("Token 用量", fmtLarge(agg.total) + " tokens", "本会话累计"),
+						metricCard("轮次", String(agg.turns || 0), "对话轮次"),
+						metricCard("消息", fmtFull(agg.messages || 0), "assistant / user 消息"),
+						metricCard("活跃时长", fmtDuration(agg.durationMs || 0), "分段活跃口径"),
+						metricCard("缓存命中", fmtLarge(agg.cacheRead || 0) + " tokens", "命中率 " + fmtPct(hitRateOf(agg))),
+						metricCard("活跃天数", String(agg.activeDays || 0) + " 天", "有用量的天数"),
+					),
+					models.length > 0 ? element("div", { className: "ust-tblWrap", style: { marginTop: 10 } },
+						element("table", { className: "ust-tbl" },
+							element("thead", null, element("tr", null,
+								element("th", null, "模型"),
+								element("th", { className: "ust-tblNum" }, "输入"),
+								element("th", { className: "ust-tblNum" }, "输出"),
+								element("th", { className: "ust-tblNum" }, "缓存命中"),
+								element("th", { className: "ust-tblNum" }, "总量"),
+								element("th", { className: "ust-tblNum" }, "命中率"),
+								element("th", { className: "ust-tblNum" }, "占比"))),
+							element("tbody", null, models.map((m) => element("tr", { key: m.model },
+								element("td", null, element("div", { className: "ust-provCell" },
+									element("span", { className: "ust-dot", style: { background: m.color || "var(--ink)" } }),
+									element("span", { className: "ust-ellip", title: m.model }, m.model))),
+								element("td", { className: "ust-tblNum" }, fmtLarge(m.input)),
+								element("td", { className: "ust-tblNum" }, fmtLarge(m.output)),
+								element("td", { className: "ust-tblNum" }, fmtLarge(m.cacheRead)),
+								element("td", { className: "ust-tblNum" }, fmtLarge(m.total)),
+								element("td", { className: "ust-tblNum" }, fmtPct(hitRateOf(m))),
+								element("td", { className: "ust-tblNum" }, (mSum > 0 ? Math.round((m.total / mSum) * 100) : 0) + "%")))),
+						),
+					) : element("div", { className: "ust-placeholder" }, "该口径下本会话尚无用量记录"),
+				);
+			};
+			return element("div", { className: "ust-root" },
+				element("div", { className: "ust-block-head", style: { justifyContent: "space-between" } },
+					element("div", { className: "ust-block-titleRow" },
+						element("h2", { className: "ust-h2" }, "会话用量"),
+						element("div", { className: "ust-sub" }, data ? "数据更新于 " + fmtClock(data.generatedAt) : "读取中…"),
+					),
+					element("button", { type: "button", className: "ust-btn ust-btn--ghost", onClick: () => setOpen((v) => !v) }, open ? "收起" : "展开"),
+				),
+				open ? element("div", null,
+					error ? element("div", { className: "ust-warn" }, "加载失败：" + error)
+						: !data ? element("div", { className: "ust-placeholder" }, "正在读取用量数据…")
+						: element("div", null, section("今天", today), section("全部历史", all)),
+				) : null,
+			);
 		}
 
 		exports.apply = apply;
