@@ -460,7 +460,7 @@ async function runBrowserE2E() {
     const failed = Object.entries(r).filter(([, v]) => v !== true).map(([k]) => k);
     if (failed.length) {
       console.log("  -- 失败项：" + failed.join("、"));
-      for (const l of out.split("\n")) if (/(GHSIDE|GHLEGEND|GHDAYTIP|E2E_ERROR|CONSOLE_MSGS|PAGE |NEU )/.test(l)) console.log("  -- " + l.slice(0, 900));
+      for (const l of out.split("\n")) if (/(GHSIDE|GHLEGEND|GHDAYTIP|E2E_ERROR|CONSOLE_MSGS|CONSOLE_DUMP|NAV |SIX |PAGE |NEU )/.test(l)) console.log("  -- " + l.slice(0, 900));
     }
     for (const [name, cond] of Object.entries(r)) ok(name, cond === true);
   } finally {
