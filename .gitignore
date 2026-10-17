@@ -3,3 +3,7 @@ node_modules/
 .DS_Store
 tests/preview-*.html
 tests/_*
+__*.log
+__*.py
+__*.cjs
+__*.png
