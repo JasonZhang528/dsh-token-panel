@@ -4,7 +4,7 @@
 
 **DeepSeek Harness (DSH) plugin: sidebar Token usage statistics**
 
-**Covers: full-history session scan × usage trend × model dial × activity heatmap × session & provider breakdown × light/dark themes**
+**Covers: full-history session scan × usage trend × model dial × activity heatmap × session & provider breakdown × per-session "Usage" tab × light/dark themes**
 
 [![Version](https://img.shields.io/badge/Version-v0.2.0-1D5FD0?style=for-the-badge)](package.json)
 [![DSH Plugin](https://img.shields.io/badge/DSH-Plugin-0E7C86?style=for-the-badge)](#installation)
@@ -31,7 +31,9 @@ A "Token ledger" built into the DSH sidebar. It scans your DSH session records a
 |:---:|:---:|
 | <img src="assets/panel-tooltip.png" width="400" alt="Tooltip"> | <img src="assets/panel-tables.png" width="400" alt="Tables"> |
 
-Dark theme: <img src="assets/panel-dark.png" width="600" alt="Dark theme">
+| Session "Usage" tab: date/hourly bar trend linkage | Dark theme |
+|:---:|:---:|
+| <img src="assets/panel-session-usage.png" width="400" alt="Session usage tab: today selected by default, click a date bar to drive the hourly trend"> | <img src="assets/panel-dark.png" width="400" alt="Dark theme"> |
 
 ## ✨ Features
 
@@ -48,6 +50,7 @@ Dark theme: <img src="assets/panel-dark.png" width="600" alt="Dark theme">
 | 🔌 **Provider stats** | Aggregated by API provider: input / output / cache hits / total / hit rate / share / model breakdown; **click any row** for that provider's per-model usage and hit rate (also paginated beyond 10 models), **paginated beyond 10 rows** |
 | 🧮 **Top metrics** | Total tokens / peak day / longest session / current streak / longest streak |
 | ♻️ **Auto refresh** | On by default at 5 seconds (options: 5 / 10 / 30 / 60 seconds); **the page renders first and then fetches**, so a cold start never freezes |
+| 💬 **Conversation "Usage" tab** | Every session's conversation area gains a "Usage" view beside "Chat / Trajectory": that session's **date bar trend → click to drive the hourly bar trend**, model dial, top-5 boards, overview metrics and auto refresh; **today is selected by default** and the other bars dim for contrast; **single-day sessions hide the date chart** (nothing to compare) and keep only the hourly distribution |
 | ♿ **Accessibility** | WCAG AA contrast (audited per theme), `prefers-reduced-motion` fallback, transparent hit areas so even small dots are easy to hover |
 
 ## 📦 Installation
@@ -74,6 +77,7 @@ Restart DSH, then click **用量统计** in the sidebar.
 - **Activity insights** below the overview metrics is collapsed by default; click to expand the tool / skill / MCP figures.
 - Pagination controls appear under the session and provider tables beyond 10 rows; **click any row** for its model breakdown.
 - **Refresh** forces a full rescan; auto refresh pulls every 5 seconds by default.
+- Open any session and click the "**Usage**" tab above the conversation to see that session's own date/hourly trends, model share and top-5 boards; **click a date bar** to switch the hourly distribution below.
 
 ## ⚙️ How it works
 
@@ -81,7 +85,7 @@ Restart DSH, then click **用量统计** in the sidebar.
 DSH session records
         │
         ▼  sessionPersistence enumeration + event replay
-Aggregate by day / hour / model / session / provider
+Aggregate by day / hour / model / session / provider / session×day×hour
         │
         ▼  in-memory + on-disk two-tier cache (SWR)
 GET /api/usage-stats (host trust fence: Host/Origin + cookie)
@@ -101,7 +105,25 @@ Client: hand-written SVG rendered 1:1 at the measured container width
 | **Hit areas** | Visual elements carry no events: per-cell transparent rects on the heatmap, full-ring sector paths on the dial, so hovering never flickers |
 | **Tooltip** | `position: fixed` mounted under a container without `transform`, so coordinates stay viewport-relative and follow the mouse |
 | **Server** | Reuses the host `sessionPersistence` for aggregation; two-tier cache with stale-while-revalidate |
+| **Session charts** | Reuses the main panel's `Trend` / `Donut` / `TopBoards` components, fed with synthetic data for the current session only — one drawing and colour system, no duplicated implementation |
+| **Coordinate mapping** | Hit indices are derived by `idxAt`: `clientX` is first scaled back from `viewBox width / CSS width` (because `.ust-plot svg{width:100%}` stretches the SVG), then the left inset is subtracted; **`scrollLeft` is never added on top** since `getBoundingClientRect` already reflects scrolling — doing so offsets every index once the chart scrolls |
 | **Security** | `/api/usage-stats` passes the host `connection.requestRejection` trust fence; read-only, never writes back to session logs |
+
+## 💬 Session "Usage" tab
+
+Beyond the global panel, every session's conversation area has a "**Usage**" view (beside "Chat / Trajectory") that narrows the statistics to that one session:
+
+| Module | Description |
+|------|------|
+| 📅 **Date trend** | Stacked bars: one bar per date, height = that day's usage, values labelled above each bar. **Today is selected by default** and highlighted (outline + backdrop) while the other bars dim; **click any bar** to drive the hourly trend below, click again to fall back to the default |
+| 🕐 **Hourly trend** | Same stacked-bar style, showing the selected day's 0–23 distribution; coordinates stay aligned with the axis even when scrolled horizontally |
+| 🍩 **Model usage** | This session's model dial plus breakdown (input / output / cache hits / total / hit rate / share) |
+| 🏆 **Top 5 boards** | This session's **top plugins / MCP / skills**; **all three columns always render**, and a dimension never used shows "No data" centred inside its column so the layout never jumps |
+| 🧮 **Overview** | Tokens / cache hits / hit rate / top model / turns / messages / active duration / active days |
+| ♻️ **Auto refresh** | Same options as the main panel (5 / 10 / 30 / 60 s); the footer **always sticks to the bottom**, even when content is shorter than the viewport |
+| 🖥️ **Focused layout** | Entering the tab hides the composer and status bar to give the whole height to the charts; switching back restores them immediately |
+
+> A single-day session's date trend would show just one bar with nothing to compare, so it is **hidden automatically** and the day is fully described by the hourly trend.
 
 ## 🔢 Data semantics
 
@@ -117,6 +139,8 @@ Client: hand-written SVG rendered 1:1 at the measured container width
 | Tools and plugins | Both the outer `tool/call` and the PTC inner `tool/ptc-dispatch-start` events are consumed (in PTC mode the outer call is usually `run_code`, so counting it alone would be misleading); **non-core tools** count as plugins |
 | MCP | Tool names of the form `mcp__<server>__<tool>` are merged to the server level |
 | Skills | Parsed from the `arguments.name` of the `skill` tool call; falls back to a generic name when the arguments are not JSON |
+| Session hourly bucket | The host accumulates **session × day × hour**; the date trend reads session × day, the hourly trend reads session × day × hour for the selected day, and falls back to a cross-day hour merge when nothing is selected |
+| Session top 5 | Same rules as the global boards: MCP tools (`mcp__<server>__<tool>`) only enter the MCP board, non-core tools enter the plugin board, skills come from the call arguments |
 
 ## ✅ Acceptance tests
 
