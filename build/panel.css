@@ -512,9 +512,10 @@ body[data-ds-dark-theme] .ust-gh-mbtn.active, body[data-ds-dark-theme] .ust-gh-v
 /* ── 插件 / MCP / Skill 三榜 TOP5 ────────────────────────── */
 /* 三榜同一水平线：grid 等宽三列，列顶对齐、行高一致 */
 .ust-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 32px; align-items: start; }
-/* 再等宽拉伸也别拉满：单列时 1fr 会横贯整行，榜单内容被扯散到两端。
-   上限取 50%——两榜时正好各占半行，单榜时收在半行内并左对齐，留白更平衡。 */
-.ust-top-col { min-width: 0; max-width: 50%; }
+/* 三榜现在恒为三栏：每栏吃满自己的网格轨道，不再限 50%。
+   （max-width:50% 是两栏时代的遗留规则，套在三栏上会让每栏只占轨道一半，
+     实测出现 251px 列宽 + 286px 间距的稀疏观感。） */
+.ust-top-col { min-width: 0; }
 .ust-top-title { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
 .ust-top-row { display: flex; align-items: baseline; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--rule); }
 .ust-top-row:last-child { border-bottom: 0; }
@@ -650,5 +651,58 @@ body[data-ds-dark-theme] .ust-pgBtn.is-active { background: #EDECE7; color: #1A1
 body[data-ds-dark-theme] .ust-pageHead { border-bottom-color: rgba(255,255,255,.08); }
 body[data-ds-dark-theme] .ust-pageTitle { color: #EDECE7; }
 
-/* ── 会话用量 tab（对话区内嵌视图）：自带左右呼吸边距 ── */
-.ust-sessview { padding: 12px 16px 32px; }
+/* ── 会话用量 tab（对话区内嵌视图） ──
+   与主面板同一套版心：左右留白 32px（窄屏 16px）。
+   该视图没有输入框，靠 body.ust-sessview-on 把输入区让出的高度全部收下。
+   min-height:100% + flex column：内容不足一屏时页脚靠 margin-top:auto 顶到容器底部，
+   内容超过一屏时页脚自然排在内容末尾——两种情形都「始终贴合底部」。 */
+.ust-sessview {
+  padding: 16px 32px 0;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+@media (max-width: 900px) {
+  .ust-sessview { padding: 12px 16px 0; }
+}
+/* 用量页是纯读视图：隐藏输入框，避免占掉半屏高度（切回对话页即恢复） */
+body.ust-sessview-on [data-conversation-region="composer"] { display: none !important; }
+/* 页脚：margin-top:auto 把它推到容器底部（不论页面高度）；
+   底色两层（不透底），负外边距吃掉 .ust-sessview 的左右留白以通栏。
+   底部间距由自身 padding 承担，故 .ust-sessview 不再留 padding-bottom。 */
+.ust-sessview-foot {
+  margin: auto -32px 0; padding: 6px 32px 8px;
+  z-index: 2;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--rule);
+  background-color: var(--surface);
+  background-image: linear-gradient(var(--dsw-alias-bg-layer-2, transparent), var(--dsw-alias-bg-layer-2, transparent));
+}
+@media (max-width: 900px) {
+  .ust-sessview-foot { margin-left: -16px; margin-right: -16px; padding-left: 16px; padding-right: 16px; }
+}
+.ust-sessview-foot .ust-meta { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.ust-sessview-foot .ust-btn { padding: 3px 12px; font-size: 12px; }
+/* 折线（小时趋势）：一条线 = 一个模型；点为空槽不连线，避免横穿误导 */
+.ust-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ust-line.ust-cf0 { stroke: var(--c0); } .ust-line.ust-cf1 { stroke: var(--c1); }
+.ust-line.ust-cf2 { stroke: var(--c2); } .ust-line.ust-cf3 { stroke: var(--c3); }
+.ust-line.ust-cf4 { stroke: var(--c4); } .ust-line.ust-cf5 { stroke: var(--c5); }
+body[data-ds-dark-theme] .ust-line { fill: none; }
+.ust-dot { stroke: var(--surface); stroke-width: 1.5; }
+.ust-dot.ust-cf0 { fill: var(--c0); } .ust-dot.ust-cf1 { fill: var(--c1); }
+.ust-dot.ust-cf2 { fill: var(--c2); } .ust-dot.ust-cf3 { fill: var(--c3); }
+.ust-dot.ust-cf4 { fill: var(--c4); } .ust-dot.ust-cf5 { fill: var(--c5); }
+.ust-pick-ring { fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 3 2; }
+
+/* 日期趋势点选：选中柱体加描边，命中层给底色，鼠标提示可点 */
+/* 选中柱：描边 + 背后一层竖向淡底，让「当前口径」在一排柱里一眼可辨。
+   fill 保持模型色不动（颜色承载模型身份），只靠轮廓与背光做选中区分。 */
+.ust-bar.is-picked { stroke: var(--ink); stroke-width: 2; }
+.ust-hitband.is-picked { fill: var(--hover); opacity: .55; }
+/* 选中柱的背光条：与柱同宽、贯穿到基线，靠滤镜外的半透明块实现（不遮挡柱色） */
+.ust-pick-bg { fill: var(--hover); opacity: .5; }
+/* 未选中的柱略降透明度，进一步拉开主次（悬停时由命中层恢复） */
+.ust-bar.is-dim { opacity: .55; }

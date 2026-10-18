@@ -12,6 +12,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
+import { homedir } from "node:os";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 let PAGE = 1;
@@ -120,7 +121,7 @@ ok("按天输出会话明细", h.includes("const sessions = [...(d.bySession || 
 ok("按天输出供应商明细", h.includes("const providers = [...(d.byProvider || new Map()).entries()]"));
 ok("按天输出消息数", h.includes("messages: d.messages"));
 ok("会话名取自 session/title 事件", h.includes('case "session/title":') && h.includes("sessionTitle = ev.data.title.trim()"));
-ok("缓存带 schemaVersion", h.includes("const CACHE_SCHEMA_VERSION = 6") && h.includes("schemaVersion: CACHE_SCHEMA_VERSION"));
+ok("缓存带 schemaVersion", h.includes("const CACHE_SCHEMA_VERSION = 9") && h.includes("schemaVersion: CACHE_SCHEMA_VERSION"));
 ok("旧 schemaVersion 缓存不采用", h.includes("j.schemaVersion === CACHE_SCHEMA_VERSION"));
 
 section("客户端：日期范围过滤（Token用量统计以下）");
@@ -168,8 +169,8 @@ ok("会话行输出命中与命中率", c.includes("fmtLarge(r.cacheRead)") && c
 ok("供应商表含命中率列", /"供应商"[\s\S]{0,600}?"命中率"/.test(c));
 ok("会话窗口聚合累计四件套", c.includes("cur.cacheRead += s.cacheRead || 0;"));
 
-section("客户端：图表改版（柱状图，命中率折线已移除）");
-ok("用量分布改为柱状图", c.includes('"aria-label": "用量分布柱状图"') && c.includes('className: cF(s.rank) + " ust-bar"'));
+section("客户端：图表改版（柱状图 + 折线双形态）");
+ok("柱状与折线形态并存", c.includes('className: cF(s.rank) + " ust-bar"') && c.includes('className: cF(s.rank) + " ust-line"'));
 ok("原折线路径已移除", !c.includes('cS(s.rank) + " ust-hair"'));
 ok("命中率折线图已删除", !c.includes("ust-hr-line") && !c.includes('"aria-label": "各模型缓存命中率折线图"'));
 ok("命中率折线相关样式已清理", !c.includes(".ust-hr-line") && !c.includes(".ust-hr-dot") && !c.includes(".ust-legend-line"));
@@ -204,10 +205,11 @@ ok("每根柱输出数值", c.includes('className: "ust-bar-val"') && c.includes
 // 回归：刻度曾直接用原始峰值（9455万），标签落在零碎数值上。
 // 现在按峰值量级向上取整到整档（94,550,000 → 95,000,000，即 9500万）。
 ok("刻度按峰值向上取整", c.includes("const rawPeak = Math.max(1, ...visTotals);") && c.includes("const stepU = mag / 10;") && c.includes("const up = Math.ceil(rawPeak / stepU) * stepU;"));
-ok("标签渲染进 svg", c.includes('grid, xAxis, bars, barLabels, peakMark,'));
+ok("图表按形态渲染进 svg", c.includes('grid, xAxis, isLine ? lineSeries : bars,'));
 ok("逐根柱标数值不抽稀", !c.includes("labelStride") && c.includes("const cramped = colStep < BAR_LABEL_W;"));
 ok("密集时降字号不隐藏", c.includes('className: "ust-bar-val" + (cramped ? " ust-bar-val--sm" : "")') && c.includes(".ust-bar-val--sm { font-size: 9px;"));
-ok("峰值柱不重复标数值", c.includes('if (!(v.total > 0) || i === peakIdx) return null;'));
+// 需求：数值文本始终在柱子最上方，峰值柱与普通柱同一规则（不再跳过峰值柱）
+ok("每根有量的柱都标数值", c.includes('if (!(v.total > 0)) return null;') && !c.includes('|| i === peakIdx) return null;'));
 ok("零用量柱不标数值", c.includes('!(v.total > 0)'));
 ok("标签样式已定义", c.includes('.ust-bar-val {') && c.includes('stroke: var(--surface); stroke-width: 2.5px;'));
 ok("峰值判定提前", c.indexOf('let peakIdx = 0, peakVal = -1;') < c.indexOf('const bars = values.map'));
@@ -239,11 +241,18 @@ ok("三榜 TOP5",
   // 榜单由 col(title, list) 生成：标题以变量传入，不再出现字面量调用
   && c.includes("const cols = groups.map(([title, list]) => col(title, list));"));
 ok("三榜同一水平线", c.includes(".ust-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));"));
-ok("无数据的榜单不渲染", c.includes("].filter(([, list]) => list.length > 0);") && c.includes("if (!groups.length) return null;"));
+// 需求：三个 TOP 图表始终展示，空榜给占位
+ok("三榜恒展示不按数据裁剪", !c.includes("].filter(([, list]) => list.length > 0);") && !c.includes("if (!groups.length) return null;"));
+// 需求：无数据时在列表中间显示「暂无数据」
+ok("空榜显示暂无数据", c.includes('className: "ust-top-empty"') && c.includes('"暂无数据"') && !c.includes("本会话未使用"));
+ok("空榜文案居中", /className: "ust-top-empty"[\s\S]{0,240}?justifyContent: "center"/.test(c));
+// 回归：max-width:50% 是两栏时代遗留，套在三栏上会让每栏只占轨道一半（实测 251px 列 + 286px 间距）
+ok("三栏吃满轨道不再限宽", !c.includes(".ust-top-col { min-width: 0; max-width: 50%; }"));
 // 回归保护只针对 Trend（用量趋势柱状图）：其基线本就是 0，再标一个 0 会与
 // X 轴首刻度挤在一起。热力图 HeatTrend 的 Y 轴确实需要 0/峰值两极，故限定函数体。
 {
-  const trendStart = c.indexOf("function Trend({ days, window: wnd })");
+  // Trend 签名含可选参数（会话页传 title / onPick / pickKey），按正则匹配以兼容各种形态
+  const trendStart = c.search(/function Trend\(\{ days, window: wnd(, title)?, variant = "bar", showRangeLabel = true, onPick, pickKey \}\) \{/);
   const trendEnd = trendStart >= 0 ? c.indexOf("\n\t\tfunction ", trendStart + 10) : -1;
   const trendBody = trendStart >= 0 && trendEnd > trendStart ? c.slice(trendStart, trendEnd) : "";
   ok("柱状图不再标多余的 0", trendBody.length > 0 && !trendBody.includes('textAnchor: "end" }, "0")'));
@@ -356,7 +365,7 @@ ok("缓存命中第二行为 TOKENS", c.includes('label: "缓存命中", value: 
 ok("宿主按天下发洞察计数", h.includes("day.insights") && h.includes("bumpDay"));
 ok("洞察随窗口合并", c.includes("function insightsIn(days, wnd, all)") && c.includes("const winInsights = insightsIn(days, wnd, data.insights)"));
 ok("洞察挂载用 winInsights", c.includes("element(Insights, { insights: winInsights") && c.includes("element(TopBoards, { insights: winInsights })"));
-ok("宿主 schema 升至 6", h.includes("const CACHE_SCHEMA_VERSION = 6"));
+ok("宿主 schema 升至 9", h.includes("const CACHE_SCHEMA_VERSION = 9"));
 // 回归：MCP 工具（mcp__<server>__<tool>）曾因「非核心工具即插件」的判据
 // 同时进插件榜与 MCP 榜，插件榜因此出现 mcp__siyuan__http_request 之类怪名。
 ok("MCP 工具不计入插件榜", h.includes("const asPlugin = !CORE_TOOLS.has(tn) && !srv;") && !h.includes("const isPlugin = !CORE_TOOLS.has(tn);"));
@@ -389,6 +398,111 @@ ok("注册 /api/usage-stats 路由", h.includes('path: "/api/usage-stats"'));
 ok("自行通过信任栅栏", h.includes("requestRejection"));
 ok("inject 含 webServer", h.includes('"webServer"'));
 ok("不写回会话日志（只读）", !/writeFile[^\n]*sessions/i.test(h));
+
+section("客户端：对话区「用量」tab");
+ok("注册 conversation.view", c.includes('ctx.slots.inject("conversation.view"'));
+ok("用量 tab 组件存在", c.includes("function SessionUsageView"));
+// 回归：dateKey 只接受 Date 时，dateKey(Date.now()) 会在 getFullYear 上抛
+// TypeError，被槽位错误边界吞成 <div data-slot-error>，表现为「用量」tab 一片空白。
+ok("dateKey 兼容毫秒时间戳", /function dateKey\(d\) \{\s*if \(typeof d === "number"\) d = new Date\(d\);/.test(c));
+ok("不再向 dateKey 传裸时间戳", !/dateKey\(Date\.now\(\)\)/.test(c));
+// 用量页是纯读视图：隐藏输入框（避免占掉半屏），离开即恢复
+ok("用量页隐藏输入框", c.includes('body.ust-sessview-on [data-conversation-region="composer"] { display: none !important; }'));
+ok("挂载即打 body 标记", c.includes('document.body.classList.add("ust-sessview-on")') && c.includes('document.body.classList.remove("ust-sessview-on")'));
+// 版心与主面板一致：左右 32px，窄屏 16px
+ok("用量页左右留白 32px", /\.ust-sessview \{[^}]*padding: 16px 32px 0;/.test(c));
+ok("用量页窄屏留白 16px", /\.ust-sessview \{ padding: 12px 16px 0; \}/.test(c));
+// 结构：不再有「今天 / 全部历史」两套卡，指标并入一组；顺序对齐主面板
+ok("不再分「今天」与「全部历史」两段", !c.includes('cards("今天"') && !c.includes('cards("全部历史"'));
+ok("指标卡并入单组", c.includes('element("div", { className: "ust-metrics" }, cards)'));
+{
+  // 顺序断言：Token → 缓存命中 → 命中率 → 最常用模型 → 轮次 → 消息 → 活跃时长 → 活跃天数
+  const start = c.indexOf("function SessionUsageView");
+  const body = start >= 0 ? c.slice(start, start + 9000) : "";
+  const order = ["Token 用量", "缓存命中", "命中率", "最常用模型", "轮次", "消息", "活跃时长", "活跃天数"];
+  const idx = order.map((k) => body.indexOf('label: "' + k + '"'));
+  ok("概览卡顺序与主面板一致", idx.every((v, i) => v >= 0 && (i === 0 || v > idx[i - 1])));
+  ok("趋势在概览之后", body.indexOf("element(Trend,") > idx[idx.length - 1]);
+  ok("圆环在趋势之后", body.indexOf("element(Donut,") > body.indexOf("element(Trend,"));
+  ok("TOP5 在圆环之后", body.indexOf("element(TopBoards,") > body.indexOf("element(Donut,"));
+}
+ok("用量页展示三榜 TOP5", c.includes("element(TopBoards, { insights: sessInsights })"));
+ok("会话洞察取自会话行", c.includes("(meta && meta.insights) || null"));
+ok("页脚含刷新按钮", c.includes('className: "ust-sessview-foot"'));
+// 小时趋势：数据源为当前会话的小时桶，Trend 走单日窗口 → 自动切 0-23 小时模式
+// 需求：小时趋势标题不带日期文本（单日场景日期图已隐藏，日期信息无需重复）
+ok("小时趋势标题不含日期", c.includes('title: "小时用量趋势",') && !c.includes('"小时用量趋势（"'));
+ok("小时窗口只含一个日期键", c.includes('const hourWnd = { id: "hour", label: "全部", dateKeys: [activeDate] };'));
+ok("小时数据取会话级 hours 字段", c.includes("meta && meta.hours") && c.includes("hourMap.set") === false && c.includes("const hourMap = new Map(hourBuckets.map"));
+ok("补齐 24 格不留空洞", c.includes("Array.from({ length: 24 }"));
+ok("小时趋势喂入小时窗口", c.includes("days: [hourDay], window: hourWnd,"));
+// 自动刷新：默认开启、默认 5 秒、档位 5/10/30/60、定时器随开关启停
+ok("用量页自动刷新默认开启", (c.match(/const \[autoRefresh, setAutoRefresh\] = react\.useState\(true\);/g) || []).length >= 2);
+ok("用量页默认间隔 5 秒", (c.match(/const \[autoEvery, setAutoEvery\] = react\.useState\(5\);/g) || []).length >= 2);
+ok("用量页定时器随开关启停", c.includes("setInterval(() => { load(false); }") && (c.match(/return \(\) => clearInterval\(id\);/g) || []).length >= 2);
+// TOP5 三榜仍在，且取自会话数据
+ok("三榜仍为插件/MCP/Skill", c.includes('["最常用插件"') && c.includes('["最常用 MCP"') && c.includes('["最常用 Skill"'));
+
+section("宿主侧：会话级小时桶");
+ok("会话小时桶已声明", h.includes("const sessHours = new Map()"));
+ok("小时桶入账 usage", h.includes("const hb = ensureSessHour(hh);") && h.includes("addMetrics(hb.metrics, usage)"));
+ok("小时桶累计轮次", h.includes("ensureSessHour(sh).turns += 1"));
+ok("小时桶累计消息", (h.match(/ensureSessHour\(sh\)\.messages \+= 1;/g) || []).length === 2);
+ok("会话行下发 hours", h.includes("hours: [...sessHours.entries()]"));
+ok("缓存 schema 升至 8", h.includes("const CACHE_SCHEMA_VERSION = 9"));
+
+section("宿主侧：会话级洞察");
+ok("会话累计工具计数", h.includes("const sessToolCounts = new Map()"));
+ok("会话级口径与全历史一致", h.includes("const bumpSessInsights = (tn, args)") && h.includes("const asPlugin = !CORE_TOOLS.has(tn) && !srv;"));
+ok("两处工具事件均计入会话", (h.match(/bumpSessInsights\(tn, ev\.data\.arguments\);/g) || []).length === 2);
+ok("会话行下发 insights", h.includes("insights: {") && h.includes("topPlugins: topOf(sessPluginCounts)"));
+
+section("宿主侧：会话 × 天 × 小时桶");
+ok("天小时桶已声明", h.includes("hours: new Map()") && h.includes("const ensureSessDayHour"));
+ok("天小时桶入账 usage", h.includes("const sh = ensureSessDayHour(ss, hour);") && h.includes("addMetrics(sh.metrics, usage)"));
+ok("会话行下发 dayHours", h.includes("dayHours: [...days.entries()]"));
+ok("缓存 schema 升至 9", h.includes("const CACHE_SCHEMA_VERSION = 9"));
+
+section("客户端：日期趋势联动与页脚吸附");
+ok("新增日期用量趋势", c.includes('title: "日期用量趋势"'));
+ok("日期趋势可点选", c.includes("onPick: (d) => setPickDate((cur) => ((cur || autoPick) === d ? null : d))"));
+ok("日期趋势传选中态", c.includes("pickKey: effectivePick"));
+ok("小时趋势跟随选中日", c.includes("const activeDate = pickedDay ? pickedDay.date : autoPick;"));
+ok("点选后取该天小时桶", c.includes("const pickedDay = dayHours.find((d) => d.date === effectivePick) || null;"));
+ok("未点选取跨天合并口径", c.includes("(Array.isArray(meta && meta.hours) ? meta.hours : [])"));
+ok("Trend 支持变体与点选回调", c.includes('function Trend({ days, window: wnd, title, variant = "bar", showRangeLabel = true, onPick, pickKey })'));
+ok("柱体与折线点均带选中态", c.includes('className: cF(s.rank) + " ust-bar" + (isPicked ? " is-picked" : "")') && c.includes('className: "ust-pick-ring"'));
+ok("选中态样式已定义", c.includes(".ust-bar.is-picked {") && c.includes(".ust-hitband.is-picked {"));
+ok("页脚始终贴合底部", /\.ust-sessview-foot \{[^}]*margin: auto -32px 0;/.test(c) && /\.ust-sessview \{[^}]*min-height: 100%;/.test(c));
+ok("页脚底色两层不透底", /\.ust-sessview-foot \{[^}]*background-color: var\(--surface\)[^}]*linear-gradient/.test(c));
+ok("页脚通栏负外边距", c.includes("margin: 4px -32px 0;") && c.includes("padding: 6px 32px 8px;"));
+// 日期趋势：隐藏右侧「全部」区间文案
+ok("日期趋势隐藏区间文案", c.includes('title: "日期用量趋势",') && /showRangeLabel: false,/.test(c));
+// 小时趋势改为折线，标题带选中日期
+ok("小时趋势为折线", c.includes('variant: "line", showRangeLabel: false,'));
+ok("小时趋势标题保持简洁", c.includes('title: "小时用量趋势",'));
+ok("折线按模型分类绘制", c.includes("const lineSeries = series.map((s, k) => {") && c.includes('className: cF(s.rank) + " ust-line"'));
+ok("折线空槽不连线", c.includes("if (!(val > 0)) return;"));
+ok("折线与点同组渲染", c.includes('element("g", { key: "l" + k },') && c.includes('element("path", { key: "p", className: cF(s.rank) + " ust-line", d }),') && c.includes('key: "d" + i, className: cF(s.rank) + " ust-dot", cx: xc(i), cy: y(val), r: 3,'));
+ok("折线样式已定义", c.includes(".ust-line { fill: none;") && c.includes(".ust-dot.ust-cf0"));
+// 少量日期：柱状图收窄为紧凑簇
+// 少量日期：改用「格位模型」——柱心落在格位中心，剩余空间成为留白。
+// （曾用「收窄轴线」实现紧凑，但 SVG 被 CSS width:100% 等比放大，柱体反而变形。）
+ok("少量日期走格位模型", c.includes("const sparse = N <= 3;") && c.includes("const bandW = sparse ? Math.max(minStep, spanW / N) : colStep;"));
+ok("格位柱心居中", c.includes("(sparse ? (i + 0.5) * bandW : i * colStep)"));
+// 回归：idxAt 曾把 scrollLeft 重复计入（rect.left 已含滚动位移），
+// 无滚动时无症状，一旦横向滚动索引整体偏移。另补 SVG 被 CSS 缩放时的坐标折算。
+ok("索引反算不再双算 scrollLeft", !c.includes("clientX - rect.left + (holder ? holder.scrollLeft : 0)"));
+ok("索引反算折算 CSS 缩放", c.includes("local = local * (vbW / rect.width);"));
+// 需求：日期柱状图默认选中当天，柱子有选中效果
+ok("默认选中当天", c.includes("const autoPick = activeDaySet.has(todayKey)") && c.includes("const effectivePick = pickDate || autoPick;"));
+ok("选中态传 effectivePick", c.includes("pickKey: effectivePick,"));
+ok("选中柱加粗描边", c.includes(".ust-bar.is-picked { stroke: var(--ink); stroke-width: 2; }"));
+ok("未选中柱降透明度", c.includes(".ust-bar.is-dim { opacity: .55; }") && c.includes("const isDim = hasPick && !isPicked;"));
+ok("少量日期柱宽收窄", c.includes("const barW = Math.max(3, Math.min(bandW * (sparse ? 0.42 : 0.62), sparse ? 64 : 34));"));
+// 需求：柱子是矩形，去除圆角
+ok("柱体为矩形无圆角", !c.includes("rx: Math.min(4, barW / 4),") && !c.includes('barW" + (isPicked ? " is-picked" : "")'));
+ok("topOf 提到模块作用域", /^function topOf\(map, n = 5\) \{/m.test(h));
 
 section("打包内容");
 ok("cordis.patch.yml 存在", existsSync(join(ROOT, "cordis.patch.yml")));
@@ -423,8 +537,21 @@ async function runBrowserE2E() {
   const CLI = "D:/Program Files/DeepSeek Harness/resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js";
   const HELPER = join(ROOT, "tests", "browser-e2e.mjs");
 
-  // 1) 启动 dsh web（随机端口）
-  const child = spawn(EXE, ["--expose-internals", CLI, "--profile", "web", "--port", "0", "--no-open"], {
+  // 1) 用当前源码跑 E2E：把工作副本 link 进一次性 profile，再启动它。
+  //    （web profile 装的是 tgz 快照，落后于源码；缓存 schema 也会因版本差判失效，
+  //     冷扫超过 7s 断言窗口，与产品行为无关。）
+  const PROFILE = "__acc-" + Date.now().toString(36);
+  const HOME = process.env.DSH_HOME || join(homedir(), ".dsh");
+  const PROFILE_DIR = join(HOME, "profiles", PROFILE);
+  const spawnSync2 = (args, opts) => spawnSync(EXE, ["--expose-internals", CLI, ...args], { encoding: "utf8", windowsHide: true, ...opts });
+  try {
+    // 从 web 模板复制，保留内置面板集合；失败则退回极简 profile
+    spawnSync2(["--from-default-profile", "web", "--profile", PROFILE, "--dump-config"]);
+    spawnSync2(["plugin", "--profile", PROFILE, "add", "link:" + ROOT]);
+  } catch (e) { console.log("  -- profile 准备失败：" + String(e).slice(0, 120)); }
+
+  // 2) 启动该 profile 的 dsh web（随机端口）
+  const child = spawn(EXE, ["--expose-internals", CLI, "--profile", PROFILE, "--port", "0", "--no-open"], {
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
@@ -443,7 +570,7 @@ async function runBrowserE2E() {
   ok("dsh web 启动成功", true);
 
   try {
-    // 2) 浏览器阶段交给 Electron 运行时执行（app.asar 内的 MCP 客户端只有它能加载）
+    // 3) 浏览器阶段交给 Electron 运行时执行（app.asar 内的 MCP 客户端只有它能加载）
     const res = spawnSync(EXE, [HELPER, url], {
       encoding: "utf8",
       windowsHide: true,
@@ -465,6 +592,8 @@ async function runBrowserE2E() {
     for (const [name, cond] of Object.entries(r)) ok(name, cond === true);
   } finally {
     try { child.kill(); } catch {}
+    // 清理一次性 profile：不留残余目录，也不与下次运行串缓存
+    try { rmSync(PROFILE_DIR, { recursive: true, force: true }); } catch {}
   }
 }
 

@@ -44,7 +44,10 @@ window.__ModuleLoader__.load({
 			if (p.length !== 3) return dateStr;
 			return Number(p[1]) + " 月 " + Number(p[2]) + " 日";
 		}
+		// 兼容 Date 与毫秒时间戳：历史调用点混用过 Date.now()，
+		// 传入数字时会在 getFullYear 上抛 TypeError，被槽位错误边界吞成空白面板。
 		function dateKey(d) {
+			if (typeof d === "number") d = new Date(d);
 			return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 		}
 		function addDays(key, n) {
@@ -897,18 +900,26 @@ window.__ModuleLoader__.load({
 			// 三栏同高：用 grid 而非 flex，保证三列顶部对齐、行高一致
 			const col = (title, list) => element("div", { key: title, className: "ust-top-col" },
 				element("div", { className: "ust-top-title" }, title),
-				list.map((it, i) => element("div", { key: it.name, className: "ust-top-row" },
-					element("span", { className: rankCls(i) }, String(i + 1)),
-					element("span", { className: "ust-top-name", title: it.name }, it.name),
-					element("span", { className: "ust-top-count" }, fmtFull(it.count) + " 次"))),
+				// 空榜也要占位：只渲染标题会留下一条空白栏，读者无从判断是「没数据」还是「渲染坏了」
+				list.length
+					? list.map((it, i) => element("div", { key: it.name, className: "ust-top-row" },
+						element("span", { className: rankCls(i) }, String(i + 1)),
+						element("span", { className: "ust-top-name", title: it.name }, it.name),
+						element("span", { className: "ust-top-count" }, fmtFull(it.count) + " 次")))
+					: element("div", {
+						className: "ust-top-empty",
+						// 空态在列内垂直居中：满榜 5 行实测约 154px（行高 30px + 4 条分隔线 1px），
+						// minHeight 取 160px 与之对齐，三栏「空 / 满」混排时高度观感一致，不出现塌陷的空白栏。
+						style: { display: "flex", alignItems: "center", justifyContent: "center", minHeight: "160px" },
+					}, "暂无数据"),
 			);
-			// 无数据的榜单整栏不渲染，避免出现空的占位列
+			// 三栏始终展示：无数据的榜显示「暂无数据」空态占位（不隐藏整栏），
+			// 避免「这次只有插件榜」让版面忽宽忽窄、也让读者知道该维度确实没被用过。
 			const groups = [
 				["最常用插件", ins.topPlugins || []],
 				["最常用 MCP", ins.topMcp || []],
 				["最常用 Skill", ins.topSkills || []],
-			].filter(([, list]) => list.length > 0);
-			if (!groups.length) return null;
+			];
 			const cols = groups.map(([title, list]) => col(title, list));
 			return element("div", { className: "ust-block" },
 				element("div", { className: "ust-block-head" },
@@ -1110,7 +1121,7 @@ window.__ModuleLoader__.load({
 		}
 		// ---------- 会话用量详情（会话头按钮 → 浮层） ----------
 		// 数据完全复用主页已缓存的 data.days[].sessions（按天桶），本地聚合出两个口径：
-		//   今天 = dateKey(Date.now()) 当天的桶；全历史 = 所有天的桶合并。
+		//   今天 = dateKey(new Date()) 当天的桶；全历史 = 所有天的桶合并。
 		// 展示与用量统计「今天」信息同构：概览卡（Token / 轮次 / 消息 / 时长 / 命中率）+ 按模型明细表。
 		function sessionUsageAggregate(days, sessionId, onlyDate) {
 			const acc = { total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0, messages: 0, durationMs: 0, byModel: {} };
@@ -1167,7 +1178,7 @@ window.__ModuleLoader__.load({
 				})();
 				return () => { cancelled = true; };
 			}, []);
-			const todayKey = dateKey(Date.now());
+			const todayKey = dateKey(new Date());
 			const days = (data && data.days) || [];
 			const today = data ? sessionUsageAggregate(days, sessionId, todayKey) : null;
 			const all = data ? sessionUsageAggregate(days, sessionId, null) : null;
@@ -1307,12 +1318,20 @@ window.__ModuleLoader__.load({
 				}) : null,
 		);
 		}
-		function Trend({ days, window: wnd }) {
+		// title：可选标题覆盖。会话「用量」tab 传「小时用量趋势 / 日期用量趋势」以点明口径；
+		// 主面板不传，回退到「按小时的用量分布 / 用量趋势」的既有文案（不影响既有断言）。
+		// variant："bar"（默认，堆叠柱）| "line"（多模型折线，每模型一条）。
+		// showRangeLabel：右侧是否显示区间文案（主面板显示「今天/全部」，会话页两种图表都不需要）。
+		// onPick / pickKey：可选点选联动。用量页「日期趋势」点柱后下方小时趋势跟随切换。
+		function Trend({ days, window: wnd, title, variant = "bar", showRangeLabel = true, onPick, pickKey }) {
 			const [boxRef, boxW] = useMeasure();
 			const [hidden, setHidden] = react.useState({});
 			const [hover, setHover] = react.useState(null);
 			const [placeTip, clearTip, tipEl] = useTip();
 			const scrollRef = react.useRef(null);
+
+			// 折线模式：一条线 = 一个模型（点高 = 当期用量）；默认堆叠柱。
+			const isLine = variant === "line";
 
 			const isHour = (wnd.dateKeys || []).length === 1;
 			const singleDate = isHour ? wnd.dateKeys[0] : null;
@@ -1362,7 +1381,8 @@ window.__ModuleLoader__.load({
 			// 让柱身避开刻度区的活交给下面的 innerL —— 只加 PAD_L 是无效的：
 			// 刻度贴轴、柱心也在轴上，两者会一起右移，间距纹丝不动。
 			const AXIS_LAB_W = narrow ? 44 : 50;
-			const PAD_L = AXIS_LAB_W + 8, PAD_R = narrow ? 6 : 10, PAD_T = 20, PAD_B = 34;
+			// PAD_T 留出「最高柱 + 柱顶数值」的高度：数值悬在柱顶上方，不被裁或压住刻度线
+			const PAD_L = AXIS_LAB_W + 8, PAD_R = narrow ? 6 : 10, PAD_T = 34, PAD_B = 34;
 			// 柱身内缩半个柱宽：首柱左缘贴住 Y 轴、末柱右缘不越右界。
 			// 否则柱心落在轴线上，左半身（最多 17px）会压住峰值刻度，末柱也会被裁。
 			// 注意只加大 PAD_L 治不了这个重叠——刻度贴轴、柱心也在轴上，两者同步右移。
@@ -1390,9 +1410,51 @@ window.__ModuleLoader__.load({
 			// 柱心实际可用的跨度（轴线两端各让出 COL_INSET）
 			const spanW = Math.max(20, plotW - COL_INSET * 2);
 			const colStep = N > 1 ? (needScroll ? minStep : spanW / (N - 1)) : spanW;
-			const bandW = colStep;
-			const barW = Math.max(3, Math.min(bandW * 0.62, 34));
-			const xc = (i) => (N > 1 ? PAD_L + COL_INSET + i * colStep : PAD_L + COL_INSET + spanW / 2);
+			// ── 格位模型 ─────────────────────────────────────────────
+			// 密集档（N 大）：沿用「步长 = 跨度/(N-1)」——首尾柱贴边、中间均分，
+			// 保证 24 小时这类满格轴不出现一端空一大块。
+			// 少量档（N<=3）：改为「格位」模型——把绘图区等分为 N 个格位，
+			// 柱心落在格位中心，剩余空间自然成为留白，而不是把两根柱摊到两端。
+			// （曾用「收窄轴线」实现紧凑，结果 SVG 被 CSS width:100% 等比放大，
+			//  柱体与刻度一起变形——那是错的方向。）
+			const sparse = N <= 3;
+			const bandW = sparse ? Math.max(minStep, spanW / N) : colStep;
+			const xc = (i) => (N > 1
+				? PAD_L + COL_INSET + (sparse ? (i + 0.5) * bandW : i * colStep)
+				: PAD_L + COL_INSET + spanW / 2);
+			// 统一反算「指针 X 坐标 → 柱索引」，供 hover 与点击共用。
+			// 必须与上面的 xc() 同一套几何：起点含 PAD_L + COL_INSET；密集档步长 colStep，
+			// 少量档（sparse）柱心按格位中心排布、间距 bandW——两种档位混用会指错柱。
+			// target 可传事件对象（取 currentTarget 的包围盒），也可传已定位的命中层元素。
+			const idxAt = (target, clientX) => {
+				const node = target && target.currentTarget ? target.currentTarget : target;
+				if (!node || !node.getBoundingClientRect || typeof clientX !== "number") return 0;
+				const rect = node.getBoundingClientRect();
+				// 本地坐标 = clientX 相对元素可视左缘（已含滚动位移）。
+				// getBoundingClientRect().left 取的正是滚动后的位置，故不能再加 scrollLeft——
+				// 早期这里补加了一次容器 scrollLeft，横向滚动后索引整体偏移（点在前半区也会落到末尾）。
+				let local = clientX - rect.left;
+				// SVG 若被 CSS 缩放（如 .ust-plot svg { width: 100% }），rect.width 是缩放后的 css 宽度，
+				// 而 PAD_L / COL_INSET / colStep / bandW 都是 viewBox（属性）坐标，
+				// 必须按「viewBox 宽 / 实际 css 宽」把指针位置折回属性坐标，否则整条轴按比例错位。
+				// node 通常是 <rect>，viewBox 在所属 <svg> 上，故取 ownerSVGElement；取不到再退回 width 属性。
+				const svgRoot = node.ownerSVGElement || (node.viewBox ? node : null);
+				const vbW = svgRoot && svgRoot.viewBox && svgRoot.viewBox.baseVal ? svgRoot.viewBox.baseVal.width : 0;
+				if (vbW > 0 && rect.width > 0) {
+					local = local * (vbW / rect.width);
+				} else {
+					const attrW = Number(svgRoot && svgRoot.getAttribute ? svgRoot.getAttribute("width") : 0);
+					if (attrW > 0 && rect.width > 0) local = local * (attrW / rect.width);
+				}
+				const local2 = local - PAD_L - COL_INSET;
+				const i = sparse
+					? Math.floor(local2 / Math.max(1, bandW))
+					: Math.round(local2 / Math.max(1, colStep));
+				return Math.max(0, Math.min(N - 1, i));
+			};
+			// 柱宽：少量档 0.62 且上限 96px（留足间隙，避免糊成实心块）；
+			// 密集档沿用 0.62 / 34px，柱间留缝。
+			const barW = Math.max(3, Math.min(bandW * (sparse ? 0.42 : 0.62), sparse ? 64 : 34));
 			const y = (v) => baseY - (v / peakTotal) * (baseY - topY);
 
 			// 柱状图 Y 轴：只标峰值一档。基线本就是 0，再标一个「0」会与 X 轴首刻度挤在一起，
@@ -1414,60 +1476,92 @@ window.__ModuleLoader__.load({
 			let peakIdx = 0, peakVal = -1;
 			visTotals.forEach((v, i) => { if (v > peakVal) { peakVal = v; peakIdx = i; } });
 
-			// 堆叠柱：一根柱 = 一格，段序与图例一致
+			// 柱状（默认）：堆叠柱，一根柱 = 一格，段序与图例一致。
+			// 折线（variant="line"）：一条线 = 一个模型，点高 = 当期用量。
+			// 两者共用同一套几何（xc / y / bandW），命中层语义一致：hover 出提示，点选联动。
+			// 存在选中项时，其余柱降透明度拉开主次；无选中（pickKey 为空）时全员常态
+			const hasPick = pickKey !== undefined && pickKey !== null && values.some((v, i) => xData[i] && xData[i].date === pickKey);
 			const bars = values.map((v, i) => {
+				const isPicked = pickKey !== undefined && pickKey !== null && xData[i] && xData[i].date === pickKey;
+				const isDim = hasPick && !isPicked;
+				const hitBand = element("rect", {
+					className: "ust-hitband" + (isPicked ? " is-picked" : ""),
+					x: xc(i) - bandW / 2, y: topY, width: bandW, height: baseY - topY,
+					...(onPick && xData[i] && xData[i].date ? {
+						style: { cursor: "pointer" },
+						onClick: () => onPick(xData[i].date),
+					} : {}),
+				});
+				if (isLine) {
+					// 折线形态：线与点都由 lineSeries 统一渲染（同一 segment 才同色对齐）。
+					// 这里只负责本格的命中层 + 选中环，避免点被画两遍。
+					return element("g", { key: "b" + i },
+						isPicked ? element("circle", {
+							key: "sel", className: "ust-pick-ring", cx: xc(i), cy: y(visTotals[i]), r: 6,
+						}) : null,
+						hitBand,
+					);
+				}
+				// 柱状形态：堆叠段自下而上累加，段序与图例一致
 				let acc = 0;
 				const segs = series.map((s, k) => {
 					if (!visible[k] || !(v.vals[k] > 0)) return null;
 					const y0 = y(acc), y1 = y(acc + v.vals[k]);
 					acc += v.vals[k];
+					// rx 圆角：粗柱（少量日期档）观感更精致；细柱（密集档）2px 以内不糊
 					return element("rect", {
-						key: "s" + k, className: cF(s.rank) + " ust-bar",
+						key: "s" + k, className: cF(s.rank) + " ust-bar" + (isPicked ? " is-picked" : "") + (isDim ? " is-dim" : ""),
 						x: xc(i) - barW / 2, y: y1, width: barW, height: Math.max(1, y0 - y1),
 					});
 				});
-				return element("g", { key: "b" + i }, segs,
-					element("rect", { className: "ust-hitband", x: xc(i) - bandW / 2, y: topY, width: bandW, height: baseY - topY }));
+				return element("g", { key: "b" + i }, segs, hitBand);
 			});
 
-			// 峰值标注：比普通数值更醒目，故该柱不再重复普通标签。
-			// 柱顶距顶部网格线不足一行字（14px）时，柱顶上方放不下文字——
-			// 此时把标注移到柱体内部顶端（描边保证在任何段色上都可读），
-			// 而不是硬钳到图表顶部压住柱顶（曾与 Y 轴刻度、柱顶叠成一团）。
-			const peakTopGap = y(peakVal) - topY; // 柱顶到顶部网格线的余量
-			const peakMark = peakVal > 0 ? element("text", {
-				className: "ust-callout",
-				x: xc(peakIdx),
-				y: peakTopGap < 14 ? y(peakVal) + 15 : Math.max(topY + 12, y(peakVal) - 10),
-				textAnchor: "middle",
-			}, fmtLarge(peakVal)) : null;
 
-			// 柱顶数值：每根柱顶都标出合计用量——「数量显示在柱子上面」是明确需求，
-			// 不再按步长抽稀（曾导致 4 根柱只标 1 根、22 根只标 6 根）。
-			// 防重叠改为按字号缩放：柱距放不下整串数值时降到 k 量级（fmtLarge 已是紧凑形态，
-			// 这里用字号 9px 的兜底类，比隐藏标签更可读）；峰值仍用更醒目的标注，此处跳过以免重复。
-			const barLabels = values.map((v, i) => {
-				if (!(v.total > 0) || i === peakIdx) return null;
+			// 每模型一条折线：同一段几何下把相邻点连起来。
+			// 断点不跨「空档」：某格该模型为 0 时不开线段，避免横穿出误导性的斜线。
+			const lineSeries = series.map((s, k) => {
+				if (!visible[k]) return null;
+				let d = "";
+				const pts = [];
+				values.forEach((v, i) => {
+					const val = v.vals[k] || 0;
+					if (!(val > 0)) return; // 空槽不连线也不留点：线段自然断开
+					d += (d === "" ? "M" : "L") + xc(i) + " " + y(val) + " ";
+					pts.push(element("circle", {
+						key: "d" + i, className: cF(s.rank) + " ust-dot", cx: xc(i), cy: y(val), r: 3,
+					}));
+				});
+				// 该模型全程无量（被图例隐藏或确实为 0）时不出元素
+				if (!d) return null;
+				return element("g", { key: "l" + k },
+					element("path", { key: "p", className: cF(s.rank) + " ust-line", d }),
+					pts,
+				);
+			});
+			// 柱顶数值：每根柱都标，一律悬在柱顶上方（不因贴近最高刻度线就改放到柱内）。
+			// PAD_T 已预留一行字的高度，最高柱的数值同样放得下，故不再需要「贴顶就移进柱内」
+			// 的兜底分支——那会让同一张图里标签位置不一致，读起来更乱。
+			const BAR_VAL_GAP = 8; // 数值基线距柱顶的间隙（含白描边余量）
+			const barLabels = isLine ? [] : values.map((v, i) => {
+				if (!(v.total > 0)) return null;
 				const cramped = colStep < BAR_LABEL_W;
+				const isPeak = i === peakIdx;
 				return element("text", {
 					key: "v" + i,
-					className: "ust-bar-val" + (cramped ? " ust-bar-val--sm" : ""),
-					// y 是文本基线：数字没有下伸部，但 bbox 底边比基线低约 3px（内部行距），
-					// 再加 2.5px 白描边会向外扩 1.25px——间隙 10px 才能保证视觉上真正悬在柱顶上方
-					x: xc(i), y: Math.max(topY + 12, y(v.total) - 10),
-					// 一律居中：柱心已内缩 17px，首柱居中后左缘不会压到 Y 轴刻度
+					className: "ust-bar-val" + (cramped ? " ust-bar-val--sm" : "") + (isPeak ? " is-peak" : ""),
+					// 一律柱顶上方：y 是文本基线，数字无下伸部，基线比柱顶高 BAR_VAL_GAP 即视觉悬空
+					// 峰值柱同样走这条规则，观感统一；PAD_T 已为其预留高度
+					y: y(v.total) - BAR_VAL_GAP,
+					x: xc(i),
 					textAnchor: "middle",
 				}, fmtLarge(v.total));
 			});
 
 			const onMove = (e) => {
 				if (!boxW) return;
-				const rect = e.currentTarget.getBoundingClientRect();
-				// 取所在滚动容器的位移，横向滚动后仍算得准
-				const holder = e.currentTarget.closest(".ust-plot");
-				const local = e.clientX - rect.left + (holder ? holder.scrollLeft : 0);
-				// 反算柱索引：与 xc(i) 同一套几何（起点含 COL_INSET，步长用 colStep）
-				const i = Math.max(0, Math.min(N - 1, Math.round((local - PAD_L - COL_INSET) / Math.max(1, colStep))));
+				// 反算柱索引：统一走 idxAt，稀疏档（N<=3）与密集档都能算对
+				const i = idxAt(e, e.clientX);
 				setHover(i);
 				const rows = series.map((s, k) => visible[k]
 					? element("div", { key: s.model, className: "ust-tip-row" },
@@ -1489,10 +1583,10 @@ window.__ModuleLoader__.load({
 			return element("div", { className: "ust-block" },
 				element("div", { className: "ust-block-head" },
 					element("div", { className: "ust-block-titleRow" },
-						element("h2", { className: "ust-h2" }, isHour ? "按小时的用量分布" : "用量趋势"),
-						element("div", { className: "ust-sub" }, "一根柱 = 一个模型，柱高 = 当期用量"),
+						element("h2", { className: "ust-h2" }, title || (isHour ? "按小时的用量分布" : "用量趋势")),
+						element("div", { className: "ust-sub" }, isLine ? "一条线 = 一个模型，点高 = 当期用量" : "一根柱 = 一个模型，柱高 = 当期用量"),
 					),
-					element("div", { className: "ust-sub" }, wnd.label),
+					showRangeLabel ? element("div", { className: "ust-sub" }, wnd.label) : null,
 				),
 				// 图例置于图表上方
 				element("div", { className: "ust-legend ust-legend--above" },
@@ -1509,10 +1603,23 @@ window.__ModuleLoader__.load({
 				),
 				element("div", { ref: boxRef },
 					element("div", { className: "ust-plot" + (needScroll ? " is-scroll" : ""), ref: scrollRef },
-						boxW > 0 ? element("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "用量分布柱状图" },
-							grid, xAxis, bars, barLabels, peakMark,
+						boxW > 0 ? element("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": isLine ? "用量分布折线图" : "用量分布柱状图" },
+							grid, xAxis, isLine ? lineSeries : bars, isLine ? null : barLabels,
 							hover !== null && element("line", { className: "ust-cursor", x1: xc(hover), y1: topY, x2: xc(hover), y2: baseY }),
-							element("rect", { className: "ust-hit", x: 0, y: 0, width: W, height: H, onMouseMove: onMove, onMouseLeave: () => { setHover(null); clearTip(); } }),
+							// 命中层铺满整个 SVG，且渲染在柱体之后——SVG 中后渲染者恒在上层，
+							// 柱子因此点不到（实测 elementFromPoint 返回 rect.ust-hit）。
+							// 故点选入口必须挂在这里，与 hover 共用 idxAt 反算索引。
+							element("rect", {
+								className: "ust-hit", x: 0, y: 0, width: W, height: H,
+								onMouseMove: onMove,
+								onMouseLeave: () => { setHover(null); clearTip(); },
+								// 仅在可点选时给 pointer；否则保持 crosshair 的准星语义
+								style: onPick ? { cursor: "pointer" } : undefined,
+								onClick: onPick ? (e) => {
+									const d = xData[idxAt(e, e.clientX)];
+									if (d && d.date) onPick(d.date);
+								} : undefined,
+							}),
 						) : null,
 					),
 				),
@@ -1989,34 +2096,51 @@ window.__ModuleLoader__.load({
 			}, SessionUsageView));
 		}
 		// 对话区「用量」tab：注册为 conversation.view 视图（与原生 Chat / Trajectory 并列）。
-		// 参照 dsh-context 的实现：只挂 conversation.view，不挂会话头按钮；
-		// standardProps 含 sessionId，直接可读会话数据。
-		// 注意 hooks 必须在条件早退之前（否则 sessionId 有无两种渲染 hooks 数不一致，React 抛错）。
-		// 对话区「用量」tab：单会话用量统计，参照主面板「今天」视图的设计语言。
-		// 数据：/api/usage-stats 的按天会话桶（days[].sessions）本地聚合出该会话，
-		// 再映射成合成 days 喂给主面板的 Trend / Donut——同源同款，零重复绘制代码。
+		// 布局顺序与主面板「用量统计」一致：概览指标 → 用量趋势 → 模型用量 → 最常用 TOP5 → 页脚。
+		// 数据：/api/usage-stats 的按天会话桶（days[].sessions）本地聚合出该会话；
+		// 洞察与 TOP5 取宿主下发的会话行 insights（与全历史同一套口径）。
+		// 挂载期间给 body 打标记，样式据此隐藏输入框：用量页是纯读视图，把整块高度让给统计内容。
 		function SessionUsageView({ sessionId }) {
 			const [data, setData] = react.useState(null);
 			const [error, setError] = react.useState(null);
 			const [busy, setBusy] = react.useState(false);
+			// 自动刷新：默认开启、默认 5 秒（与「用量统计」同款档位）
+			const [autoRefresh, setAutoRefresh] = react.useState(true);
+			const [autoEvery, setAutoEvery] = react.useState(5);
+			// 日期联动：null = 未点选（小时趋势取跨天合并口径）；点选后取该天的小时分布
+			const [pickDate, setPickDate] = react.useState(null);
+			// 隐藏输入区：挂载加类、卸载移除，切回对话页输入框自动恢复
+			react.useEffect(() => {
+				document.body.classList.add("ust-sessview-on");
+				return () => {
+					document.body.classList.remove("ust-sessview-on");
+				};
+			}, []);
+			const load = react.useCallback(async (force) => {
+				try {
+					const res = await fetch("/api/usage-stats" + (force ? "?refresh=1" : ""), { credentials: "same-origin" });
+					if (!res.ok) throw new Error("HTTP " + res.status);
+					const json = await res.json();
+					if (!json || json.ok === false) throw new Error((json && json.error) || "响应异常");
+					setData(json);
+					setError(null);
+				} catch (e) {
+					setError(String((e && e.message) || e));
+				}
+			}, []);
 			react.useEffect(() => {
 				if (!sessionId) return;
 				let cancelled = false;
-				const load = async (force) => {
-					try {
-						const res = await fetch("/api/usage-stats" + (force ? "?refresh=1" : ""), { credentials: "same-origin" });
-						if (!res.ok) throw new Error("HTTP " + res.status);
-						const json = await res.json();
-						if (!json || json.ok === false) throw new Error((json && json.error) || "响应异常");
-						if (!cancelled) { setData(json); setError(null); }
-					} catch (e) {
-						if (!cancelled) setError(String((e && e.message) || e));
-					}
-				};
 				// 两拍：先缓存秒开，再强扫拿当前会话的最新增量（新会话不在旧缓存里）
-				load(false).then(() => load(true));
+				if (!cancelled) load(false);
 				return () => { cancelled = true; };
-			}, [sessionId]);
+			}, [sessionId, load]);
+			// 自动刷新：定时重新拉取（不强制重扫，走服务端 SWR 缓存）
+			react.useEffect(() => {
+				if (!sessionId || !autoRefresh) return;
+				const id = setInterval(() => { load(false); }, Math.max(1, autoEvery) * 1000);
+				return () => clearInterval(id);
+			}, [sessionId, autoRefresh, autoEvery, load]);
 			if (!sessionId) return element("div", { className: "ust-placeholder" }, "打开一个会话后查看用量");
 			const days = (data && data.days) || [];
 			// 该会话的按天用量 → 合成 days（与主面板组件同构），Trend / Donut 直接复用
@@ -2049,47 +2173,143 @@ window.__ModuleLoader__.load({
 				byModel[m.model] = bm;
 			}));
 			const allMetrics = sumMetrics(Object.values(byModel));
-			const todayKey = dateKey(Date.now());
-			const todayAgg = sessionDays.find((d) => d.date === todayKey) || { total: 0, turns: 0, messages: 0, durationMs: 0, byModel: [] };
-			const todaySum = sumMetrics(todayAgg.byModel || []);
-			const metricCard = (label, value, sub) => element("div", { key: label, className: "ust-metric" },
-				element("div", { className: "ust-metric-label" }, element("span", null, label)),
-				element("div", { className: "ust-metric-value" }, value),
-				element("div", { className: "ust-metric-sub" }, sub));
-			const cards = (title, cards_) => element("div", { key: title },
-				element("div", { className: "ust-sub", style: { fontWeight: 650, color: "var(--ink)", marginBottom: 8 } }, title),
-				element("div", { className: "ust-metrics" }, cards_));
-			const refresh = () => { setBusy(true); fetch("/api/usage-stats?refresh=1", { credentials: "same-origin" }).then((r) => r.json()).then((j) => { if (j && j.ok) setData(j); }).catch(() => {}).finally(() => setBusy(false)); };
+			const modelList = Object.values(byModel).sort((a, b) => b.total - a.total);
+			const topModel = modelList[0] || null;
+			const peakDay = active.reduce((mx, d) => (d.total > mx.total ? d : mx), { total: 0, date: null });
+			// 会话级洞察与 TOP5：宿主在 sessions[] 里逐会话下发（与全历史同一套口径）
+			const meta = (Array.isArray(data && data.sessions) ? data.sessions.find((s) => s && s.id === sessionId) : null) || null;
+			const sessInsights = (meta && meta.insights) || null;
+			const refresh = async () => {
+				setBusy(true);
+				try { await load(true); } finally { setBusy(false); }
+			};
+			// 小时窗口：窗口内仅一个日期键 → Trend 自动切到 0-23 小时模式。
+			// 选中日期 = pickDate（用户点选）→ autoPick（默认选中）→ 最近活跃日。
+			// 默认选中「当天」：会话当天有用量就选当天，否则退回最近一个活跃日——
+			// 这样首屏就有一根柱子处于选中态，与下方小时折线的口径一一对应。
+			const todayKey = dateKey(new Date());
+			const dayHours = Array.isArray(meta && meta.dayHours) ? meta.dayHours : [];
+			const activeDaySet = new Set(dayHours.map((d) => d.date));
+			const autoPick = activeDaySet.has(todayKey)
+				? todayKey
+				: (dayHours.length ? dayHours[dayHours.length - 1].date : todayKey);
+			const effectivePick = pickDate || autoPick;
+			const pickedDay = dayHours.find((d) => d.date === effectivePick) || null;
+			const activeDate = pickedDay ? pickedDay.date : autoPick;
+			const hourWnd = { id: "hour", label: "全部", dateKeys: [activeDate] };
+			// 小时数据优先级：点选日期 → 该天的 dayHours；未点选 → 会话级 hours（跨天同钟点合并）
+			const hourBuckets = pickedDay
+				? (pickedDay.hours || [])
+				: (Array.isArray(meta && meta.hours) ? meta.hours : []);
+			const hourMap = new Map(hourBuckets.map((h) => [h.hour, h]));
+			// 顶层 byModel = 各小时桶逐模型合并：Trend 的图例序列取自 modelTotalsIn，
+			// 不补这层序列为空，柱子会整体归零（主面板单日窗口天然带 byModel，故无此问题）
+			const hourByModel = {};
+			hourBuckets.forEach((b) => (b.byModel || []).forEach((m) => {
+				const bm = hourByModel[m.model] || { model: m.model, color: m.color, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+				bm.input += m.input || 0; bm.output += m.output || 0;
+				bm.cacheRead += m.cacheRead || 0; bm.cacheWrite += m.cacheWrite || 0;
+				bm.total += m.total || 0;
+				if (!bm.color && m.color) bm.color = m.color;
+				hourByModel[m.model] = bm;
+			}));
+			const hourDay = {
+				date: activeDate,
+				byModel: Object.values(hourByModel),
+				total: hourBuckets.reduce((s, b) => s + (b.total || 0), 0),
+				hours: Array.from({ length: 24 }, (_, h) => {
+					const b = hourMap.get(h);
+					return {
+						hour: h,
+						total: b ? b.total || 0 : 0,
+						turns: b ? b.turns || 0 : 0,
+						messages: b ? b.messages || 0 : 0,
+						byModel: b ? (b.byModel || []) : [],
+					};
+				}),
+			};
 			const wnd = { id: "all", label: "全部", dateKeys: sessionDays.map((d) => d.date) };
+			// 日期趋势窗口：只含有用量的天。只有一天时该图退化为一根柱、无横向对比意义，
+			// 故整块隐藏（见渲染处的 activeDates.length > 1 判断）。
+			const activeDates = sessionDays.filter((d) => d.total > 0).map((d) => d.date);
+			const dayWnd = { id: "day", label: "全部", dateKeys: activeDates };
+			// 概览指标：卡序与主面板一致（Token 类优先 → 命中 → 最常用模型 → 计数类 → 活跃天数）
+			const cards = [
+				element(Metric, { icon: element(IconToken), label: "Token 用量", value: fmtLarge(agg.total), sub: "TOKENS" }),
+				element(Metric, { icon: element(IconToken), label: "缓存命中", value: fmtLarge(allMetrics.cacheRead), sub: "TOKENS" }),
+				element(Metric, { icon: element(IconTrend), label: "命中率", value: fmtPct(hitRateOf(allMetrics)), sub: "缓存命中 / 当期满量" }),
+				element(Metric, {
+					icon: element(IconBolt), label: "最常用模型",
+					value: topModel ? topModel.model : "无",
+					sub: topModel && agg.total > 0 ? "占本会话 " + Math.round((topModel.total / agg.total) * 100) + "%" : "",
+					text: true,
+				}),
+				element(Metric, { icon: element(IconChat), label: "轮次", value: String(agg.turns || 0), sub: "对话轮次" }),
+				element(Metric, { icon: element(IconMail), label: "消息", value: fmtFull(agg.messages || 0), sub: "条" }),
+				element(Metric, { icon: element(IconCalendar), label: "活跃时长", value: fmtDuration(agg.durationMs || 0), sub: "分段活跃口径" }),
+				element(Metric, {
+					icon: element(IconCalendar), label: "活跃天数", value: String(active.length) + " 天",
+					sub: peakDay.date ? "峰值 " + fmtLarge(peakDay.total) + "（" + fmtDayLabel(peakDay.date) + "）" : "有用量的天数",
+				}),
+			];
 			return element("div", { className: "ust-root ust-sessview" },
-				element("div", { className: "ust-block-head" },
-					element("div", { className: "ust-block-titleRow" },
-						element("h2", { className: "ust-h2" }, "会话用量"),
-						element("div", { className: "ust-sub" }, data ? "数据更新于 " + fmtClock(data.generatedAt) : "读取中…"),
-					),
-					element("button", { type: "button", className: "ust-btn ust-btn--ghost", disabled: busy, onClick: refresh }, busy ? "刷新中…" : "刷新"),
-				),
 				error ? element("div", { className: "ust-warn" }, "加载失败：" + error) : null,
-				cards("今天", [
-					metricCard("Token 用量", fmtLarge(todayAgg.total), "TOKENS"),
-					metricCard("轮次", String(todayAgg.turns || 0), "对话轮次"),
-					metricCard("消息", String(todayAgg.messages || 0), "条"),
-					metricCard("活跃时长", fmtDuration(todayAgg.durationMs || 0), "分段活跃口径"),
-					metricCard("缓存命中", fmtLarge(todaySum.cacheRead), "TOKENS"),
-					metricCard("命中率", fmtPct(hitRateOf(todaySum)), "缓存命中 / 当期满量"),
-				]),
-				cards("全部历史", [
-					metricCard("Token 用量", fmtLarge(agg.total), "TOKENS"),
-					metricCard("轮次", String(agg.turns || 0), "对话轮次"),
-					metricCard("消息", fmtFull(agg.messages), "条"),
-					metricCard("活跃时长", fmtDuration(agg.durationMs || 0), "分段活跃口径"),
-					metricCard("缓存命中", fmtLarge(allMetrics.cacheRead), "TOKENS"),
-					metricCard("命中率", fmtPct(hitRateOf(allMetrics)), "缓存命中 / 当期满量"),
-					metricCard("活跃天数", String(active.length) + " 天", "有用量的天数"),
-				]),
-				active.length > 0 ? element(Trend, { days: sessionDays, window: wnd }) : null,
+				element("div", { className: "ust-metrics" }, cards),
+				// 日期趋势（柱状）：点柱即切换下方小时趋势的口径。
+				// 默认已选中「当天」（见上方 autoPick），故首屏就有一根柱高亮；
+				// 点已选中的柱 → 取消该次选择，回落到默认选中（当天/最近活跃日），而不是无选中。
+				// 只有一天数据时该图只有一根柱、无横向对比意义，整块隐藏（当天数据由小时趋势完整表达）。
+				activeDates.length > 1
+					? element(Trend, {
+						days: sessionDays, window: dayWnd, title: "日期用量趋势",
+						showRangeLabel: false,
+						onPick: (d) => setPickDate((cur) => ((cur || autoPick) === d ? null : d)),
+						pickKey: effectivePick,
+					})
+					: null,
+				// 小时趋势（折线）：数据源为当前会话。标题不带日期——
+				// 单日场景日期图已隐藏，日期信息无需重复；多日场景选中态由上方柱状图承担。
+				active.length > 0
+					? element(Trend, {
+						days: [hourDay], window: hourWnd,
+						variant: "line", showRangeLabel: false,
+						title: "小时用量趋势",
+						pickKey: null,
+					})
+					: null,
+				// 模型用量仍取会话整体（圆环按模型占比，与小时无关）
 				active.length > 0 ? element(Donut, { days: sessionDays, window: wnd }) : null,
+				// 与「用量统计」同款三榜 TOP5：插件 / MCP / Skill，各自取本会话 TOP5
+				sessInsights ? element(TopBoards, { insights: sessInsights }) : null,
 				active.length === 0 && data ? element("div", { className: "ust-placeholder" }, "本会话尚无 Token 用量记录") : null,
+				element("div", { className: "ust-sessview-foot" },
+					element("div", { className: "ust-meta" }, data ? "数据更新于 " + fmtClock(data.generatedAt) : "读取中…"),
+					element("div", { className: "ust-auto" },
+						element("label", { className: "ust-autoToggle", title: "开启后按所选间隔自动刷新数据" },
+							element("input", {
+								type: "checkbox",
+								className: "ust-autoCheck",
+								checked: autoRefresh,
+								onChange: (e) => setAutoRefresh(e.target.checked),
+							}),
+							element("span", null, "自动刷新"),
+						),
+						autoRefresh ? element("div", { className: "ust-autoSeg", role: "tablist", "aria-label": "自动刷新间隔" },
+							AUTO_OPTIONS.map((sec) => element("span", {
+								key: sec, role: "tab", "aria-selected": autoEvery === sec,
+								className: "ust-tab" + (autoEvery === sec ? " active" : ""),
+								onClick: () => setAutoEvery(sec),
+							}, sec + " 秒")),
+						) : null,
+					),
+					element("button", {
+						type: "button", className: "ust-btn", disabled: busy,
+						title: "重新扫描本机全部会话记录", onClick: refresh,
+					},
+						element("span", { className: "ust-btn-ico" + (busy ? " is-spin" : "") }, element(IconRefresh)),
+						busy ? "刷新中" : "刷新",
+					),
+				),
 			);
 		}
 
