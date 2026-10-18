@@ -425,7 +425,8 @@ ok("指标卡并入单组", c.includes('element("div", { className: "ust-metrics
 {
   // 顺序断言：Token → 缓存命中 → 命中率 → 最常用模型 → 轮次 → 消息 → 活跃时长 → 活跃天数
   const start = c.indexOf("function SessionUsageView");
-  const body = start >= 0 ? c.slice(start, start + 9000) : "";
+  // 窗口取到 TOP5 之后：顺序卡在骨架分支之后，距函数头约 8600–9700，Trend/Donut/TOP5 到 11k 左右
+  const body = start >= 0 ? c.slice(start, start + 12000) : "";
   const order = ["Token 用量", "缓存命中", "命中率", "最常用模型", "轮次", "消息", "活跃时长", "活跃天数"];
   const idx = order.map((k) => body.indexOf('label: "' + k + '"'));
   ok("概览卡顺序与主面板一致", idx.every((v, i) => v >= 0 && (i === 0 || v > idx[i - 1])));
@@ -447,6 +448,100 @@ ok("小时趋势喂入小时窗口", c.includes("days: [hourDay], window: hourWn
 ok("用量页自动刷新默认开启", (c.match(/const \[autoRefresh, setAutoRefresh\] = react\.useState\(true\);/g) || []).length >= 2);
 ok("用量页默认间隔 5 秒", (c.match(/const \[autoEvery, setAutoEvery\] = react\.useState\(5\);/g) || []).length >= 2);
 ok("用量页定时器随开关启停", c.includes("setInterval(() => { load(false); }") && (c.match(/return \(\) => clearInterval\(id\);/g) || []).length >= 2);
+section("客户端：会话「用量」tab 进入即刷新与首屏 loading");
+// 需求：进入 tab 立刻刷新数据（不等自动刷新档）+ 首屏有 loading 动画。
+// 主面板「用量统计」早已实现（rAF 后两拍 + 骨架屏），此处把会话页补齐到同一口径。
+ok("会话页进入即强刷（两拍）", (() => {
+  const start = c.indexOf("function SessionUsageView");
+  const seg = start >= 0 ? c.slice(start, start + 3600) : "";
+  return seg.includes("await load(false);") && seg.includes("await load(true);");
+})());
+ok("两拍顺序正确（秒回在强刷之前）", (() => {
+  const start = c.indexOf("function SessionUsageView");
+  const seg = start >= 0 ? c.slice(start, start + 3600) : "";
+  return seg.indexOf("await load(false);") < seg.indexOf("await load(true);");
+})());
+ok("首帧延后到 rAF 之后", (c.match(/requestAnimationFrame\(run\)/g) || []).length >= 2 && (c.match(/cancelAnimationFrame\(id\)/g) || []).length >= 2);
+ok("卸载时取消挂起的首帧请求", (() => {
+  const start = c.indexOf("function SessionUsageView");
+  const seg = start >= 0 ? c.slice(start, start + 3600) : "";
+  return seg.includes("cancelled = true;") && seg.includes("if (typeof cancelAnimationFrame") ;
+})());
+// loading 只在首屏生效：数据到位后由 busy 驱动，避免每次自动刷新都闪骨架
+ok("会话页有独立 loading 状态", (c.match(/const \[loading, setLoading\] = react\.useState\(true\);/g) || []).length >= 2);
+ok("loading 仅在无数据时早退", (() => {
+  const start = c.indexOf("function SessionUsageView");
+  const seg = start >= 0 ? c.slice(start, start + 6000) : "";
+  return seg.includes("if (loading && !data) {");
+})());
+ok("首屏出骨架卡片", (() => {
+  const start = c.indexOf("function SessionUsageView");
+  const seg = start >= 0 ? c.slice(start, start + 6000) : "";
+  return /\[0, 1, 2, 3, 4, 5, 6, 7\]\.map/.test(seg) && seg.includes("ust-skeleton");
+})());
+ok("加载态对读屏播报", (() => {
+  const start = c.indexOf("function SessionUsageView");
+  const seg = start >= 0 ? c.slice(start, start + 6000) : "";
+  return seg.includes('role: "status"') && seg.includes('"aria-live": "polite"');
+})());
+ok("加载态刷新键转圈", (() => {
+  const start = c.indexOf("function SessionUsageView");
+  const seg = start >= 0 ? c.slice(start, start + 6000) : "";
+  return seg.includes('className: "ust-btn-ico is-spin"');
+})());
+ok("骨架占位样式已定义", c.includes(".ust-sessview-block-skel {"));
+ok("骨架复用主面板脉冲动画", c.includes("@keyframes ustPulse") && c.includes("animation: ustPulse 1.4s ease-in-out infinite;"));
+ok("骨架遵循 prefers-reduced-motion", /@media \(prefers-reduced-motion: reduce\) \{[^@]{0,300}?\.ust-skeleton \{ animation: none; \}/.test(c));
+section("客户端：刷新遮罩（参照 antd Spin fullscreen）");
+// 需求：刷新中要有 loading 效果，整块内容区居中展示。
+// 形态参照 Ant Design Spin 的 fullscreen：半透明遮罩 + 居中指示器 + 文案。
+// 关键约束：只绑「手动点刷新」。自动刷新每 5s 一次，若也盖遮罩会每 5s 闪一次并挡住 tooltip。
+ok("遮罩组件存在", c.includes("function LoadingMask({ text })"));
+ok("指示器图标存在", c.includes("const IconSpinDots = () => element("));
+// 需求：loading 在会话 tab 页面内居中（不是视口固定），并带蒙版。
+// 故蒙版用 absolute + inset:0 相对内容区定位（需 is-busy 建包含块），
+// 而非 fixed——fixed 会铺满视口、盖住侧边栏与对话区，越界。
+ok("蒙版覆盖内容区（非整个视口）", /\.ust-spin \{[^}]*position: absolute; inset: 0;/.test(c));
+ok("遮罩内容居中", /\.ust-spin \{[^}]*align-items: center; justify-content: center;/.test(c));
+ok("指示器旋转动画", /\.ust-spin-dot \{[^}]*animation: ustSpin 700ms linear infinite;/.test(c));
+// 居中由蒙版自身的 flex 完成：蒙版铺满内容区，故指示器恒在内容区正中。
+// sticky 是刻意的：内容区高过视口时，纯 flex 居中会把卡片放到内容区几何中心，
+// 用户滚到顶部/底部就看不见自己刚点的 loading。sticky 让卡片仍属内容区（不越界），
+// 但始终停在视口竖直中部的可见处。
+ok("指示器 sticky 保持可见", /\.ust-spin-inner \{[^}]*position: sticky; top: 50%;/.test(c));
+ok("卡片水平居中不丢", /\.ust-spin-inner \{ margin-inline: auto; \}/.test(c));
+// antd 同款指示器：四点方阵 + 品牌蓝
+ok("指示器为 antd 四点方阵", c.includes("const IconSpinDots = () => element(") && (c.match(/cx: 6, cy: 6|cx: 18, cy: 6|cx: 18, cy: 18|cx: 6, cy: 18/g) || []).length >= 4);
+ok("指示器四点带尾迹透明度", /opacity: d\.o/.test(c) && /o: 0\.25/.test(c));
+ok("指示器为 antd 品牌蓝", /\.ust-spin-dot \{[^}]*color: #1677ff;/.test(c));
+// 蓝色直接压在暗蒙版上仅 1.57:1（WCAG 图形类要求 >=3:1），故必须垫表面色底托
+ok("蓝色指示器有底托保证对比度", /\.ust-spin-inner \{[^}]*background: var\(--surface\);/.test(c));
+// 蒙版：压暗 + 模糊，与既有 .ust-mask 同一观感
+ok("蒙版压暗底层", /\.ust-spin \{[^}]*background: var\(--dsw-alias-bg-mask-2, rgba\(0, 0, 0, \.35\)\)/.test(c));
+ok("蒙版带模糊", /\.ust-spin \{[^}]*backdrop-filter: blur\(2px\);/.test(c));
+// 层级：压住普通内容，但低于弹窗 overlay(900) 与 tooltip(10000)
+ok("蒙版层级压住内容但不越界", /\.ust-spin \{[^}]*z-index: 40;/.test(c));
+// 底托：浅色主题 --ink 是深色，直接压在暗蒙版上会糊，故垫表面色卡片
+ok("指示器落表面色底托", /\.ust-spin-inner \{[^}]*background: var\(--surface\);/.test(c));
+ok("遮罩为读屏播报", (() => { const i = c.indexOf("function LoadingMask"); return c.slice(i, i + 400).includes('role: "status"') && c.slice(i, i + 400).includes('"aria-live": "polite"'); })());
+ok("遮罩遵循 prefers-reduced-motion", /@media \(prefers-reduced-motion: reduce\) \{[^@]{0,300}?\.ust-spin-dot \{ animation: none; \}/.test(c));
+// 会话页：只绑 busy（手动刷新），不绑 loading（首屏/自动刷新走骨架或静默）
+ok("会话页遮罩绑手动刷新", (() => {
+  const i = c.indexOf("function SessionUsageView");
+  return c.slice(i, i + 14000).includes("busy ? element(LoadingMask");
+})());
+// 主面板：refreshing 只由手动刷新置位，自动刷新（load(false)）不置
+ok("主面板遮罩绑手动刷新", c.includes("refreshing ? element(LoadingMask"));
+ok("主面板手动刷新才置位", c.includes("const load = react.useCallback(async (force, manual) => {") && c.includes("if (manual) setRefreshing(true);"));
+ok("主面板刷新按钮传 manual", c.includes("onClick: () => load(true, true)"));
+ok("自动刷新不带 manual", (c.match(/setInterval\(\(\) => \{ load\(false\); \}/g) || []).length >= 2);
+// 定位上下文：内容区自身建立包含块，遮罩不越界到整个视口
+// absolute 需要内容区建包含块，确认两处都已标记
+ok("内容区建立定位上下文", /\.ust-root\.is-busy, \.ust-sessview\.is-busy \{ position: relative; \}/.test(c));
+ok("两处内容区挂载蒙版", c.includes("refreshing ? element(LoadingMask") && c.includes("busy ? element(LoadingMask"));
+// fixed 的前提：不能有 transform/filter 祖先，否则退化成相对该祖先定位。
+// 内容区祖先（page/pageBody/root/sessview）上出现这些属性会静默破坏居中。
+ok("内容区祖先无 transform/filter", !/\.ust-(?:page|pageBody|root|sessview)[^{]*\{[^}]*(?:transform|filter|backdrop-filter|perspective):/.test(c));
 // TOP5 三榜仍在，且取自会话数据
 ok("三榜仍为插件/MCP/Skill", c.includes('["最常用插件"') && c.includes('["最常用 MCP"') && c.includes('["最常用 Skill"'));
 
@@ -598,7 +693,7 @@ async function runBrowserE2E() {
     const failed = Object.entries(r).filter(([, v]) => v !== true).map(([k]) => k);
     if (failed.length) {
       console.log("  -- 失败项：" + failed.join("、"));
-      for (const l of out.split("\n")) if (/(GHSIDE|GHLEGEND|GHDAYTIP|E2E_ERROR|CONSOLE_MSGS|CONSOLE_DUMP|NAV |SIX |PAGE |NEU )/.test(l)) console.log("  -- " + l.slice(0, 900));
+      for (const l of out.split("\n")) if (/(GHSIDE|GHLEGEND|GHDAYTIP|E2E_ERROR|CONSOLE_MSGS|CONSOLE_DUMP|NAV |SIX |PAGE |NEU |MASK )/.test(l)) console.log("  -- " + l.slice(0, 900));
     }
     for (const [name, cond] of Object.entries(r)) ok(name, cond === true);
   } finally {

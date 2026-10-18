@@ -149,6 +149,17 @@ window.__ModuleLoader__.load({
 		const IconMail = () => icon(["M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z", "M22 6l-10 7L2 6"]);
 		const IconRefresh = () => icon(["M23 4v6h-6", "M1 20v-6h6", "M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"]);
 		const IconClose = () => icon(["M18 6L6 18", "M6 6l12 12"]);
+		// 加载指示器：Ant Design Spin 同款——四个圆点组成的方阵，整体旋转即表达「进行中」。
+		// 四点半透明（递减）形成旋转尾迹，与 antd 默认指示器观感一致。
+		// 用 fill 而非 stroke：这里是实心圆点，故单独出 svg，不走 icon() 的描边约定。
+		const IconSpinDots = () => element("svg", {
+			viewBox: "0 0 24 24", fill: "currentColor", "aria-hidden": "true",
+		}, [
+			{ cx: 6, cy: 6, r: 3, o: 1 },
+			{ cx: 18, cy: 6, r: 3, o: 0.75 },
+			{ cx: 18, cy: 18, r: 3, o: 0.5 },
+			{ cx: 6, cy: 18, r: 3, o: 0.25 },
+		].map((d, i) => element("circle", { key: i, cx: d.cx, cy: d.cy, r: d.r, opacity: d.o })));
 		// 折叠指示：双 chevron 朝下（即 `>>` 旋转 90° 的形态）。
 		// 两枚折线竖向堆叠，收起点向下、展开整体翻转朝上，是通用的「可展开」语义。
 		const IconChevronDown2 = () => icon(["M7 6l5 5 5-5", "M7 12l5 5 5-5"]);
@@ -1775,6 +1786,8 @@ window.__ModuleLoader__.load({
 			const [data, setData] = react.useState(null);
 			const [error, setError] = react.useState(null);
 			const [loading, setLoading] = react.useState(true);
+			// refreshing：仅手动点「刷新」时置位，用于决定是否盖全页加载遮罩
+			const [refreshing, setRefreshing] = react.useState(false);
 			const [range, setRange] = react.useState({ id: "today" });
 			const [showCustom, setShowCustom] = react.useState(false);
 			const [from, setFrom] = react.useState("");
@@ -1788,8 +1801,11 @@ window.__ModuleLoader__.load({
 			// 自定义区间倒序校验：页面外壳与主视图都要用，提前算
 			const invalid = !!(from && to && from > to);
 
-			const load = react.useCallback(async (force) => {
+			// manual：本次是否为「用户点了刷新」。loading 覆盖所有拉取（含自动刷新），
+			// refreshing 只覆盖手动刷新——只有后者才盖全页遮罩。
+			const load = react.useCallback(async (force, manual) => {
 				setLoading(true);
+				if (manual) setRefreshing(true);
 				try {
 					const res = await fetch("/api/usage-stats" + (force ? "?refresh=1" : ""), { credentials: "same-origin" });
 					if (!res.ok) throw new Error("HTTP " + res.status);
@@ -1801,6 +1817,7 @@ window.__ModuleLoader__.load({
 					setError(String((e && e.message) || e));
 				}
 				setLoading(false);
+				if (manual) setRefreshing(false);
 			}, []);
 
 			// 首帧先把页面外壳画出来，再发起首次请求。
@@ -1952,7 +1969,10 @@ window.__ModuleLoader__.load({
 			const pickedDay = effectivePick ? days.find((d) => d.date === effectivePick) : null;
 			const hourWnd = { id: "hour", label: "全部", dateKeys: effectivePick ? [effectivePick] : [] };
 
-			return element("div", { className: "ust-root" },
+			return element("div", { className: "ust-root is-busy" },
+				// 刷新中：与会话「用量」tab 同款居中指示器。只绑手动刷新（refreshing），
+				// 自动刷新与首屏拉数保持静默——每 5s 闪一次遮罩会挡住 tooltip，观感也吵。
+				refreshing ? element(LoadingMask, { text: "正在重新扫描全部会话…" }) : null,
 				element(SummaryMetrics, { summary: data.summary }),
 				hasData ? element(Heatmap, { days, window: wnd }) : null,
 				headerEl,
@@ -2022,7 +2042,7 @@ window.__ModuleLoader__.load({
 						) : null,
 					),
 					element("button", {
-						className: "ust-btn", disabled: loading, onClick: () => load(true),
+						className: "ust-btn", disabled: loading, onClick: () => load(true, true),
 						title: "重新扫描本机全部会话记录",
 					},
 						element("span", { className: "ust-btn-ico" + (loading ? " is-spin" : "") }, element(IconRefresh)),
@@ -2128,6 +2148,20 @@ window.__ModuleLoader__.load({
 				label: () => "用量",
 			}, SessionUsageView));
 		}
+		// 加载遮罩：蒙版覆盖会话页内容区，指示器在内容区内居中（参照 Ant Design Spin）。
+		// 只服务「用户主动发起的等待」（手动点刷新）；自动刷新每 5s 一次，
+		// 若也盖遮罩就变成每 5s 闪一下，还会挡住图表 tooltip，故由调用方决定是否挂载。
+		// 蒙版为 absolute（相对内容区，由 is-busy 建立包含块），故随内容区滚动——
+		// 这是「在页面内居中」，不是 fixed 的「视口固定居中」。
+		function LoadingMask({ text }) {
+			return element("div", { className: "ust-spin", role: "status", "aria-live": "polite" },
+				element("div", { className: "ust-spin-inner" },
+					element("span", { className: "ust-spin-dot" }, element(IconSpinDots)),
+					element("div", { className: "ust-spin-text" }, text),
+				),
+			);
+		}
+
 		// 对话区「用量」tab：注册为 conversation.view 视图（与原生 Chat / Trajectory 并列）。
 		// 布局顺序与主面板「用量统计」一致：概览指标 → 用量趋势 → 模型用量 → 最常用 TOP5 → 页脚。
 		// 数据：/api/usage-stats 的按天会话桶（days[].sessions）本地聚合出该会话；
@@ -2136,6 +2170,9 @@ window.__ModuleLoader__.load({
 		function SessionUsageView({ sessionId }) {
 			const [data, setData] = react.useState(null);
 			const [error, setError] = react.useState(null);
+			// loading：仅覆盖「首次进入、尚未拿到任何数据」的窗口。
+			// 数据到位后由 busy 单独驱动（转圈 + 文案），不走骨架早退，避免每次自动刷新都重排版面。
+			const [loading, setLoading] = react.useState(true);
 			const [busy, setBusy] = react.useState(false);
 			// 自动刷新：默认开启、默认 5 秒（与「用量统计」同款档位）
 			const [autoRefresh, setAutoRefresh] = react.useState(true);
@@ -2160,13 +2197,25 @@ window.__ModuleLoader__.load({
 				} catch (e) {
 					setError(String((e && e.message) || e));
 				}
+				setLoading(false);
 			}, []);
+			// 首帧先把页面外壳画出来，再发起首次请求（与主面板「用量统计」同款两拍）：
+			// 第一拍 load(false) 秒回命中缓存立即渲染，第二拍 load(true) 强制重扫拿最新数据——
+			// 打开页面即刷新，不等自动刷新档。第二拍落在第一拍落定之后，请求不并发叠罗汉。
 			react.useEffect(() => {
 				if (!sessionId) return;
 				let cancelled = false;
-				// 两拍：先缓存秒开，再强扫拿当前会话的最新增量（新会话不在旧缓存里）
-				if (!cancelled) load(false);
-				return () => { cancelled = true; };
+				const run = async () => {
+					if (cancelled) return;
+					await load(false);
+					if (cancelled) return;
+					await load(true);
+				};
+				const id = typeof requestAnimationFrame === "function" ? requestAnimationFrame(run) : setTimeout(run, 0);
+				return () => {
+					cancelled = true;
+					if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(id); else clearTimeout(id);
+				};
 			}, [sessionId, load]);
 			// 自动刷新：定时重新拉取（不强制重扫，走服务端 SWR 缓存）
 			react.useEffect(() => {
@@ -2175,6 +2224,43 @@ window.__ModuleLoader__.load({
 				return () => clearInterval(id);
 			}, [sessionId, autoRefresh, autoEvery, load]);
 			if (!sessionId) return element("div", { className: "ust-placeholder" }, "打开一个会话后查看用量");
+			// 首屏加载态：数据未到位先画骨架，指标卡不显示 0（0 会被读成「本会话没有用量」）。
+			// 与主面板「用量统计」同款：先出界面、再填数据，冷启动不会卡住。
+			// 布局与正式视图逐段对齐，数据落定时原地替换，不跳动。
+			if (loading && !data) {
+				const skel = (w, h) => element("div", { className: "ust-skeleton", style: { width: w, height: h } });
+				return element("div", { className: "ust-root ust-sessview is-busy" },
+					element("div", { className: "ust-metrics", role: "status", "aria-live": "polite" },
+						// 概览卡 8 张：第一张含名称条 + 数值条，其余只出数值条（正式视图正是这个信息密度）
+						[0, 1, 2, 3, 4, 5, 6, 7].map((i) => element("div", { key: i, className: "ust-metric" },
+							i === 0 ? skel("42%", 11) : skel("58%", 11),
+							skel(i % 2 ? "48%" : "68%", 25),
+						)),
+					),
+					skel("100%", 96),
+					element("div", { className: "ust-sessview-block-skel" }, skel("100%", 260)),
+					element("div", { className: "ust-sessview-foot" },
+						element("div", { className: "ust-meta" }, "正在读取本机会话记录…"),
+						element("div", { className: "ust-auto" },
+							element("label", { className: "ust-autoToggle" },
+								element("input", { type: "checkbox", className: "ust-autoCheck", checked: autoRefresh, onChange: (e) => setAutoRefresh(e.target.checked) }),
+								element("span", null, "自动刷新"),
+							),
+							autoRefresh ? element("div", { className: "ust-autoSeg", role: "tablist", "aria-label": "自动刷新间隔" },
+								AUTO_OPTIONS.map((sec) => element("span", {
+									key: sec, role: "tab", "aria-selected": autoEvery === sec,
+									className: "ust-tab" + (autoEvery === sec ? " active" : ""),
+									onClick: () => setAutoEvery(sec),
+								}, sec + " 秒")),
+							) : null,
+						),
+						element("button", { type: "button", className: "ust-btn", disabled: true },
+							element("span", { className: "ust-btn-ico is-spin" }, element(IconRefresh)),
+							"刷新中",
+						),
+					),
+				);
+			}
 			const days = (data && data.days) || [];
 			// 该会话的按天用量 → 合成 days（与主面板组件同构），Trend / Donut 直接复用
 			const sessionDays = days.map((d) => {
@@ -2285,8 +2371,11 @@ window.__ModuleLoader__.load({
 					sub: peakDay.date ? "峰值 " + fmtLarge(peakDay.total) + "（" + fmtDayLabel(peakDay.date) + "）" : "有用量的天数",
 				}),
 			];
-			return element("div", { className: "ust-root ust-sessview" },
+			return element("div", { className: "ust-root ust-sessview is-busy" },
 				error ? element("div", { className: "ust-warn" }, "加载失败：" + error) : null,
+				// 刷新中：整块内容区居中展示加载指示器（参照 antd Spin fullscreen）。
+				// 只绑手动刷新（busy），自动刷新保持静默——否则每 5s 闪一次遮罩，还会挡住 tooltip。
+				busy ? element(LoadingMask, { text: "正在重新扫描全部会话…" }) : null,
 				element("div", { className: "ust-metrics" }, cards),
 				// 日期趋势（柱状）：点柱即切换下方小时趋势的口径。
 				// 默认已选中「当天」（见上方 autoPick），故首屏就有一根柱高亮；

@@ -168,6 +168,19 @@ try {
   // 只比较热力图所属提示：Trend 的提示由前一个断言留下，不在本断言范围内
   results["移出后热力图提示消失"] = ghDaytip.gone === true;
 
+  // ── 刷新遮罩：蒙版覆盖视口、指示器滚动不动（需求：始终居中，不随页面滚动变化） ──
+  // 手法：点「刷新」使遮罩出现 → 滚动内容 → 比较指示器前后视口坐标是否一致。
+  // 这是实测而非读样式：sticky 实现在此处会位移，fixed 才纹丝不动。
+  const mask = JSON.parse(await ev("async () => { try {      const scroll = document.querySelector('.ust-pageBody');      const btn = [...document.querySelectorAll('.ust-btn')].find(function (b) { return /刷新/.test(b.textContent || ''); });      if (!btn) return JSON.stringify({ phase: 'noBtn' });      btn.click();      var spin = null;      for (var w = 0; w < 30 && !spin; w++) { await new Promise(function (r) { setTimeout(r, 100); }); spin = document.querySelector('.ust-spin'); }      if (!spin) return JSON.stringify({ phase: 'noMask' });      const cs = getComputedStyle(spin);      const sr = spin.getBoundingClientRect();      const dot = spin.querySelector('.ust-spin-dot');      const innerEl = spin.querySelector('.ust-spin-inner');      const vp = { w: window.innerWidth, h: window.innerHeight };      const host = document.querySelector('.ust-sessview') || document.querySelector('.ust-root');      const hr = host ? host.getBoundingClientRect() : null;      const inHost = !!(hr && sr.width <= Math.round(hr.width) + 2 && sr.height <= Math.round(hr.height) + 2 && sr.left >= Math.round(hr.left) - 2);      const fullViewport = Math.abs(sr.width - vp.w) <= 2 && Math.abs(sr.height - vp.h) <= 2 && Math.abs(sr.top) <= 2;      const ir0 = innerEl ? innerEl.getBoundingClientRect() : null;      const card0 = ir0 ? { cx: Math.round(ir0.left + ir0.width / 2), cy: Math.round(ir0.top + ir0.height / 2) } : null;      const centeredX = !!card0 && !!hr && Math.abs(card0.cx - Math.round(hr.left + hr.width / 2)) <= 4;      const centeredY = !!card0 && !!hr && Math.abs(card0.cy - Math.round(hr.top + hr.height / 2)) <= 4;      const r0 = dot.getBoundingClientRect();      const before = { cx: Math.round(r0.left + r0.width / 2), cy: Math.round(r0.top + r0.height / 2) };      if (scroll) scroll.scrollTop = Math.min(600, scroll.scrollHeight);      window.scrollBy(0, 300);      await new Promise(function (r) { setTimeout(r, 400); });      const dot2 = document.querySelector('.ust-spin-dot');      if (!dot2) return JSON.stringify({ phase: 'maskGoneOnScroll' });      const r1 = dot2.getBoundingClientRect();      const after = { cx: Math.round(r1.left + r1.width / 2), cy: Math.round(r1.top + r1.height / 2) };      const css = { pos: cs.position, bg: cs.backgroundColor, blur: cs.backdropFilter || '' };      const innerBg = innerEl ? getComputedStyle(innerEl).backgroundColor : '';      return JSON.stringify({ before, after, card0, centeredX, centeredY, fullViewport, inHost, css, hasInner: !!innerEl, innerBg, vp });    } catch (err) { return JSON.stringify({ phase: 'throw', msg: String((err && err.message) || err).slice(0, 200) }); } }"));
+  console.log("MASK " + JSON.stringify(mask));
+  results["刷新出现遮罩"] = mask.phase === undefined;
+  results["PROBE:" + (mask.phase || "ok")] = true;
+  results["蒙版 position 为 absolute"] = !!mask.css && mask.css.pos === "absolute";
+  results["蒙版不越出内容区"] = mask.inHost === true && mask.fullViewport === false;
+  results["指示器卡片内容区内水平居中"] = mask.centeredX === true;
+  results["指示器卡片内容区内垂直居中"] = mask.centeredY === true;
+  results["蒙版带底托卡片"] = mask.hasInner === true && !!mask.innerBg && mask.innerBg !== "rgba(0, 0, 0, 0)";
+
   // 控制台：只拦截告警 / 报错级别。
   // 宿主自身会打 [info] 级日志（如 [dsh-image-gen] canvas bundle），
   // 那不属于插件错误——断言「完全没有消息」会把宿主噪声误判为失败。

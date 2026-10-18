@@ -6,7 +6,7 @@
 
 **Covers: full-history session scan × usage trend × model dial × activity heatmap × session & provider breakdown × per-session "Usage" tab × light/dark themes**
 
-[![Version](https://img.shields.io/badge/Version-v0.2.2-1D5FD0?style=for-the-badge)](package.json)
+[![Version](https://img.shields.io/badge/Version-v0.2.3-1D5FD0?style=for-the-badge)](package.json)
 [![DSH Plugin](https://img.shields.io/badge/DSH-Plugin-0E7C86?style=for-the-badge)](#installation)
 [![Charts](https://img.shields.io/badge/Charts-Hand--written%20SVG-F59E0B?style=for-the-badge)](#design--implementation)
 [![License](https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge)](#license--credits)
@@ -50,6 +50,7 @@ A "Token ledger" built into the DSH sidebar. It scans your DSH session records a
 | 🔌 **Provider stats** | Aggregated by API provider: input / output / cache hits / total / hit rate / share / model breakdown; **click any row** for that provider's per-model usage and hit rate (also paginated beyond 10 models), **paginated beyond 10 rows** |
 | 🧮 **Top metrics** | Total tokens / peak day / longest session / current streak / longest streak |
 | ♻️ **Auto refresh** | On by default at 5 seconds (options: 5 / 10 / 30 / 60 seconds); **the page renders first and then fetches**, so a cold start never freezes |
+| 💫 **Refresh mask** | Clicking **Refresh** masks the content area (dimmed + blurred) with a centered loading indicator (shaped after Ant Design Spin); **manual refresh only** — auto refresh runs every 5 seconds, and masking that would flash every 5 seconds and cover the chart tooltips |
 | 💬 **Conversation "Usage" tab** | Every session's conversation area gains a "Usage" view beside "Chat / Trajectory": that session's **date bar trend → click to drive the hourly bar trend**, model dial, top-5 boards, overview metrics and auto refresh; **today is selected by default** and the other bars dim for contrast; **single-day sessions hide the date chart** (nothing to compare) and keep only the hourly distribution |
 | ♿ **Accessibility** | WCAG AA contrast (audited per theme), `prefers-reduced-motion` fallback, transparent hit areas so even small dots are easy to hover |
 
@@ -121,6 +122,8 @@ Beyond the global panel, every session's conversation area has a "**Usage**" vie
 | 🏆 **Top 5 boards** | This session's **top plugins / MCP / skills**; **all three columns always render**, and a dimension never used shows "No data" centred inside its column so the layout never jumps |
 | 🧮 **Overview** | Tokens / cache hits / hit rate / top model / turns / messages / active duration / active days |
 | ♻️ **Auto refresh** | Same options as the main panel (5 / 10 / 30 / 60 s); the footer **always sticks to the bottom**, even when content is shorter than the viewport |
+| ⏳ **Enter-and-refresh + first-paint loading** | Opening the tab pulls data in the same two beats as the main panel (cached data renders instantly, then a forced rescan takes the newest increments — it does not wait for the auto-refresh interval). Until data arrives a **skeleton screen** (pulse animation, degraded under `prefers-reduced-motion`) is shown instead of zero-valued metric cards, which would read as "this session has no usage" |
+| 💫 **Refresh mask** | Clicking **Refresh** masks this page's content area (dimmed + blurred) with a loading indicator **centered within the page**; the indicator is Ant Design Spin's **blue four-dot square** (brand blue `#1677ff`) on a surface-colored plate that keeps contrast in both themes; likewise **manual refresh only** |
 | 🖥️ **Focused layout** | Entering the tab hides the composer and status bar to give the whole height to the charts; switching back restores them immediately |
 
 > A single-day session's date trend would show just one bar with nothing to compare, so it is **hidden automatically** and the day is fully described by the hourly trend.
