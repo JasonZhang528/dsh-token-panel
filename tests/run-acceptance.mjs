@@ -132,6 +132,12 @@ ok("供应商表按窗口聚合", c.includes("function providersIn(days, wnd)"))
 ok("会话表接收 days/window", c.includes("element(SessionsView, { days: days, window: wnd"));
 ok("供应商表接收 days/window", c.includes("element(ProvidersView, { days: days, window: wnd"));
 ok("meta 按 id 建索引", c.includes("meta.reduce((m, s) => (s && s.id ? (m[s.id] = s, m) : m), {})"));
+// 主面板多日期窗口：日期柱状图与「小时用量趋势」联动（参照会话「用量」tab）
+ok("主面板日期→小时联动状态", c.includes("const [pickDate, setPickDate] = react.useState(null);"));
+ok("默认选中当天或最近活跃日", c.includes("const autoPick = winActiveSet.has(todayKey)") && c.includes("const effectivePick = (pickDate && winActiveSet.has(pickDate)) ? pickDate : autoPick;"));
+ok("联动仅在多日期窗口生效", c.includes("const multiDay = (wnd.dateKeys || []).length > 1;"));
+ok("主趋势多日期时传选中态", c.includes('title: "日期用量趋势",') && c.includes("pickKey: effectivePick,"));
+ok("小时趋势吃宿主逐日 hours", c.includes('days: [pickedDay], window: hourWnd,') && c.includes('title: "小时用量趋势",'));
 ok("会话名为主、id 为副", c.includes("ust-tblId") && c.includes('className: "ust-tblSub ust-tblId"'));
 ok("会话统计副标题按窗口", c.includes('(wnd.id === "all" ? "全部历史" : wnd.label) + "会话的 Token 用量与会话内模型明细"'));
 ok("供应商副标题按窗口", c.includes('(wnd.id === "all" ? "全部历史" : wnd.label) + "按 API 提供商汇总，含各家模型明细"'));

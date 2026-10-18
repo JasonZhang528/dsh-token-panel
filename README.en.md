@@ -6,7 +6,7 @@
 
 **Covers: full-history session scan × usage trend × model dial × activity heatmap × session & provider breakdown × per-session "Usage" tab × light/dark themes**
 
-[![Version](https://img.shields.io/badge/Version-v0.2.0-1D5FD0?style=for-the-badge)](package.json)
+[![Version](https://img.shields.io/badge/Version-v0.2.1-1D5FD0?style=for-the-badge)](package.json)
 [![DSH Plugin](https://img.shields.io/badge/DSH-Plugin-0E7C86?style=for-the-badge)](#installation)
 [![Charts](https://img.shields.io/badge/Charts-Hand--written%20SVG-F59E0B?style=for-the-badge)](#design--implementation)
 [![License](https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge)](#license--credits)
@@ -42,7 +42,7 @@ A "Token ledger" built into the DSH sidebar. It scans your DSH session records a
 | 🧭 **Native menu** | A native menu row directly below "Plugins" in the sidebar, styled exactly like the built-in entries; clicking it opens a main-area page |
 | 📅 **Time range** | Today / Yesterday / Last 7 days / Last 30 days / This month / Last month / All / Custom (with start–end validation); **defaults to Today**; the date bar freezes flush against the title while scrolling, and every query below it follows the selected range |
 | 🔥 **Activity heatmap** | **Token / duration** metric radio plus **daily / weekly / cumulative** view switch; tooltips follow the selected metric; the header row carries last-year highlights (total / active days / peak, metric-aware) and a "less → more" colour scale; GitHub contribution grid: week columns × weekday rows, five color levels, months separated by gaps, covering the last year |
-| 📈 **Usage trend** | Stacked bars: one bar per model, height = usage, **each bar labelled with its value**; **the X axis ticks every point** (scrolls horizontally instead of thinning); the hover tooltip follows the mouse; legend toggles series |
+| 📈 **Usage trend** | Stacked bars: one bar per model, height = usage, **each bar labelled with its value**; **the X axis ticks every point** (scrolls horizontally instead of thinning); the hover tooltip follows the mouse; legend toggles series. **Multi-day ranges add a second "hourly usage trend"**: today is selected by default, and **clicking a date bar switches the hourly distribution below** |
 | 🍩 **Model usage** | Dial gauge: 100 ticks = 100%, an anchor every 10 ticks; occupies 40% width, and the labelled breakdown beside it lists input / output / cache hits / total / hit rate / share; **dots match the bar chart and legend colours** |
 | 📊 **Session stats** | Per session: name / turns / messages / **duration** / input / output / cache hits / total / hit rate / share / model breakdown / last activity, **paginated beyond 10 rows**; **click any row** for that session's per-model usage and hit rate (also paginated beyond 10 models) |
 | 💡 **Activity insights** | Collapsible panel below the overview metrics, **collapsed by default**; the centred button carries two downward chevrons that flip up when expanded. Reports chat count / messages / tool calls / distinct tools / skills used / MCP used |
