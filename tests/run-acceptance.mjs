@@ -478,12 +478,12 @@ ok("页脚底色两层不透底", /\.ust-sessview-foot \{[^}]*background-color: 
 ok("页脚通栏负外边距", c.includes("margin: 4px -32px 0;") && c.includes("padding: 6px 32px 8px;"));
 // 日期趋势：隐藏右侧「全部」区间文案
 ok("日期趋势隐藏区间文案", c.includes('title: "日期用量趋势",') && /showRangeLabel: false,/.test(c));
-// 小时趋势改为折线，标题带选中日期
-ok("小时趋势为折线", c.includes('variant: "line", showRangeLabel: false,'));
-ok("小时趋势标题保持简洁", c.includes('title: "小时用量趋势",'));
-ok("折线按模型分类绘制", c.includes("const lineSeries = series.map((s, k) => {") && c.includes('className: cF(s.rank) + " ust-line"'));
-ok("折线空槽不连线", c.includes("if (!(val > 0)) return;"));
-ok("折线与点同组渲染", c.includes('element("g", { key: "l" + k },') && c.includes('element("path", { key: "p", className: cF(s.rank) + " ust-line", d }),') && c.includes('key: "d" + i, className: cF(s.rank) + " ust-dot", cx: xc(i), cy: y(val), r: 3,'));
+// 小时趋势与日期趋势同为堆叠柱状，样式统一
+ok("小时趋势为柱状", c.includes('title: "小时用量趋势",') && !c.includes('variant: "line", showRangeLabel: false,'));
+ok("两图共用堆叠柱实现", c.includes('className: cF(s.rank) + " ust-bar"') && c.includes('title: "日期用量趋势",'));
+ok("小时图不参与联动", /title: "小时用量趋势",\s*pickKey: null,/.test(c));
+// 折线能力保留在 Trend 内部（future-proof），但当前无调用方
+ok("折线代码仍可复用", c.includes('const isLine = variant === "line";'));
 ok("折线样式已定义", c.includes(".ust-line { fill: none;") && c.includes(".ust-dot.ust-cf0"));
 // 少量日期：柱状图收窄为紧凑簇
 // 少量日期：改用「格位模型」——柱心落在格位中心，剩余空间成为留白。

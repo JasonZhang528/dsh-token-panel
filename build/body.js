@@ -2267,12 +2267,13 @@ window.__ModuleLoader__.load({
 						pickKey: effectivePick,
 					})
 					: null,
-				// 小时趋势（折线）：数据源为当前会话。标题不带日期——
-				// 单日场景日期图已隐藏，日期信息无需重复；多日场景选中态由上方柱状图承担。
+				// 小时趋势（柱状）：与上方日期柱状图同一形态与样式——堆叠柱、柱顶数值、图例同色。
+				// 数据源为当前会话在小窗口径下的 0-23 小时分布。
+				// 不传 onPick / pickKey：小时图是"结果视图"，联动入口只在日期图上。
 				active.length > 0
 					? element(Trend, {
 						days: [hourDay], window: hourWnd,
-						variant: "line", showRangeLabel: false,
+						showRangeLabel: false,
 						title: "小时用量趋势",
 						pickKey: null,
 					})
