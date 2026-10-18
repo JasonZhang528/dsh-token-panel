@@ -154,7 +154,8 @@ ok("窄屏内边距收敛", c.includes("@media (max-width: 900px)") && c.include
 section("客户端：日期栏贴合标题（上内边距归零）");
 ok("滚动容器上内边距为 0", /\.ust-pageBody \{[^}]*padding: 0 32px 0; \}/.test(c));
 ok("页脚吸附最底部", c.includes(".ust-footer {") && c.includes("position: sticky;") && c.includes("bottom: 0;"));
-ok("页脚通栏并自担底部间距", c.includes("margin: 4px -32px 0;") && c.includes("padding: 6px 32px 8px;"));
+// 页脚 margin-top 由 auto 接管贴底（旧实现是 4px，内容短时会浮在中上部）
+ok("页脚通栏并自担底部间距", c.includes("margin: auto -32px 0;") && c.includes("padding: 6px 32px 8px;"));
 ok("子标题小一号", c.includes(".ust-sub { margin: 3px 0 0; font-size: 11px;"));
 ok("页脚内控件收紧", c.includes(".ust-footer .ust-btn { padding: 2px 10px;") && c.includes(".ust-footer .ust-autoSeg .ust-tab { padding: 1px 6px; }"));
 ok("自定义选中后展示区间", c.includes('range.id === "custom" && range.from && range.to') && c.includes("range.from.slice(5).replace"));
@@ -480,8 +481,12 @@ ok("Trend 支持变体与点选回调", c.includes('function Trend({ days, windo
 ok("柱体与折线点均带选中态", c.includes('className: cF(s.rank) + " ust-bar" + (isPicked ? " is-picked" : "")') && c.includes('className: "ust-pick-ring"'));
 ok("选中态样式已定义", c.includes(".ust-bar.is-picked {") && c.includes(".ust-hitband.is-picked {"));
 ok("页脚始终贴合底部", /\.ust-sessview-foot \{[^}]*margin: auto -32px 0;/.test(c) && /\.ust-sessview \{[^}]*min-height: 100%;/.test(c));
+// 回归：页脚曾因改 margin:auto 时漏掉 position，退化成 static——滚动时不再吸附（与主面板 .ust-footer 不一致）
+ok("会话页脚恢复 sticky 吸附", /\.ust-sessview-foot \{[^}]*position: sticky;[^}]*bottom: 0;/.test(c));
+ok("主面板根撑满容器", c.includes(".ust-pageBody > .ust-root { min-height: 100%; }"));
+ok("主面板页脚 margin-top:auto", /\.ust-footer \{[^}]*margin: auto -32px 0;/.test(c));
 ok("页脚底色两层不透底", /\.ust-sessview-foot \{[^}]*background-color: var\(--surface\)[^}]*linear-gradient/.test(c));
-ok("页脚通栏负外边距", c.includes("margin: 4px -32px 0;") && c.includes("padding: 6px 32px 8px;"));
+ok("页脚通栏负外边距", c.includes("margin: auto -32px 0;") && c.includes("padding: 6px 32px 8px;"));
 // 日期趋势：隐藏右侧「全部」区间文案
 ok("日期趋势隐藏区间文案", c.includes('title: "日期用量趋势",') && /showRangeLabel: false,/.test(c));
 // 小时趋势与日期趋势同为堆叠柱状，样式统一

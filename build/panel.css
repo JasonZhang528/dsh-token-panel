@@ -309,8 +309,10 @@ body[data-ds-dark-theme] .ust-tab.active { background: var(--ink); color: #19191
   bottom: 0;
   z-index: 4;
   display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
-  /* 负外边距吃掉 .ust-pageBody 的左右 32px，使页脚通栏；底部间距由自身 padding 承担 */
-  margin: 4px -32px 0;
+  /* margin-top:auto：内容不足一屏时把页脚推到容器底边（配合 .ust-pageBody > .ust-root 的 min-height:100%）；
+     内容超出时 auto 不生效，退回 sticky 的吸附行为。
+     负外边距吃掉 .ust-pageBody 的左右 32px，使页脚通栏；底部间距由自身 padding 承担 */
+  margin: auto -32px 0;
   /* 高度对齐文字 1.5 倍行高：12px 字号 * 1.5 = 18px 内容高 + 上下各 6px */
   padding: 6px 32px 8px;
   /* 与 .ust-header 同款：不透明底 + 玻璃层，滚动内容不透出 */
@@ -641,6 +643,10 @@ body[data-ds-dark-theme] .ust-pgBtn.is-active { background: #EDECE7; color: #1A1
 /* 上内边距必须为 0：sticky 的 .ust-header 会被滚动容器的上内边距顶住，
    「下滑固定」后与上方标题之间会留着一道透出内容的缝。间距改由 .ust-root 的 padding-top 承担。 */
 .ust-pageBody { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 32px 0; }
+/* 主面板根节点撑满滚动容器高度：内容不足一屏时，页脚靠 margin-top:auto 贴到容器底边，
+   而不是紧跟内容浮在页面中上部（sticky 只在内容超出时生效，撑不满时会留在内容末尾）。
+   限定在 .ust-pageBody 内，避免影响弹窗 / 加载态 / 错误态里同样使用 .ust-root 的布局。 */
+.ust-pageBody > .ust-root { min-height: 100%; }
 /* 窄屏：横向留白收敛到 16px，避免内容被过度挤压 */
 @media (max-width: 900px) {
   .ust-pageHead { padding-left: 16px; padding-right: 16px; }
@@ -668,12 +674,17 @@ body[data-ds-dark-theme] .ust-pageTitle { color: #EDECE7; }
 }
 /* 用量页是纯读视图：隐藏输入框，避免占掉半屏高度（切回对话页即恢复） */
 body.ust-sessview-on [data-conversation-region="composer"] { display: none !important; }
-/* 页脚：margin-top:auto 把它推到容器底部（不论页面高度）；
-   底色两层（不透底），负外边距吃掉 .ust-sessview 的左右留白以通栏。
+/* 页脚吸附（与主面板 .ust-footer 同一效果，两种高度都贴底）：
+   · sticky + bottom:0 —— 内容超出容器时，滚动过程中始终贴在视口底边；
+   · margin-top:auto —— 内容不足一屏时，被推到容器底边而非紧跟内容浮在中上部。
+   两者并存互不冲突：auto 只吃剩余空间，sticky 只在需要滚动时接管。
+   底色两层（不透底），负外边距吃掉 .ust-sessview 的左右留白以通栏；
    底部间距由自身 padding 承担，故 .ust-sessview 不再留 padding-bottom。 */
 .ust-sessview-foot {
+  position: sticky;
+  bottom: 0;
   margin: auto -32px 0; padding: 6px 32px 8px;
-  z-index: 2;
+  z-index: 3;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   flex-wrap: wrap;
   border-top: 1px solid var(--rule);
