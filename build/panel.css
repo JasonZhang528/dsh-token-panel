@@ -22,6 +22,9 @@
 	--l3: #78776F; --l4: #93928A; --l5: #A9A8A0;
 	--quiet: #C4C3BC;
 	--tip-bg: #191918; --tip-fg: #F7F6F3;
+	/* 命中率折线专用绿：emerald 700。与类目色板（含墨绿 --c2）色相不同，
+	   对比度 5.07:1，明显是「另一种信息」而非某个模型的颜色 */
+	--rate: #047857;
 	/* 类目色：6 个跨色相，承载模型身份；两两色距 >=60 保证一眼可分 */
 	--c0: #C62828; --c1: #C77800; --c2: #2F7D4F; --c3: #1D5FD0; --c4: #6D4AC4; --c5: #0E7C86;
 	/* 序数色：单色相蓝阶，明度 = 用量大小（浅→深） */
@@ -46,6 +49,7 @@ body[data-ds-dark-theme] .ust-root {
 	--l3: #8F8E88; --l4: #6A6963; --l5: #4A4944;
 	--quiet: #35342F;
 	--tip-bg: #F2F1ED; --tip-fg: #191918;
+	--rate: #34D399;
 	/* 类目色（暗色主题）：同 6 色相提亮，暗底对比 >=3:1 */
 	--c0: #FF6B6B; --c1: #FFA53D; --c2: #52C77A; --c3: #5B9DFF; --c4: #A78BFA; --c5: #2DD4BF;
 	/* 序数色（暗色主题）：越亮 = 用量越大 */
@@ -216,12 +220,38 @@ body[data-ds-dark-theme] .ust-tab.active { background: var(--ink); color: #19191
 .ust-model-out { width: 58px; }
 .ust-model-hit { width: 76px; }
 .ust-model-sub { width: 72px; }
-.ust-model-val { width: 40px; }
+.ust-model-val { width: 62px; }
+/* 费用列：与占比列同宽（都装 "¥123.45" / "100.00%" 这类 6-7 字符） */
+.ust-model-cost { flex: none; width: 66px; font-size: 12px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
+.ust-model--head .ust-model-cost { color: var(--muted); font-weight: 600; }
 
 /* ── 图表下方的图例（可点击显隐） ───────────────────────── */
 .ust-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; }
 /* 图例置于图表之上时：贴着图表，且两行图例之间不留大缝 */
 .ust-legend--above { margin-top: 0; margin-bottom: 6px; justify-content: center; }
+/* 趋势图控件：指标切换（Token / 费用）+ 命中率折线开关。
+   放在标题行右侧，与图例分开——图例是「看什么」，这里是「怎么算」。 */
+.ust-trendCtrl { display: flex; align-items: center; gap: 14px; flex: none; }
+.ust-trendSeg { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--rule); border-radius: 8px; }
+.ust-trendSeg .ust-tab { padding: 2px 10px; border-radius: 6px; font-size: 11.5px; }
+/* 命中率折线：实线，颜色用 --ink（与坐标轴 / 柱顶数值同一支墨色）。
+   为什么不用类目色：类目色承载「模型身份」，折线若占用某个槽位，
+   恰好那个模型的柱体就会与折线同色（实测 --c3 与 c3 距离为 0），读者无法区分。
+   用中性墨色则与 6 个类目色的最小距离 >=116，永不撞色；
+   且 --ink 深浅主题自适应（16.28:1 / 13.92:1），与图表文字同源，观感属同一张图。 */
+.ust-rate-line { fill: none; stroke: var(--rate); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; opacity: .9; }
+.ust-rate-dot { fill: var(--rate); opacity: .9; }
+.ust-rate-axis { font-size: 9px; fill: var(--faint); font-variant-numeric: tabular-nums; }
+/* 命中率图例条目：与模型图例同排，但用「线」而非「点」作标识——
+   线形对应图表里的线，读者一眼能对上 */
+.ust-legend-item--rate { cursor: default; }
+/* 聚焦态：选中的图例项加底色与描边，一眼看出「现在只看这个模型」 */
+.ust-legend-item.is-focus { background: var(--hover); border-radius: 6px; padding: 2px 8px; margin: -2px -8px; font-weight: 650; }
+.ust-legend-item.is-focus .ust-legend-dot { transform: scale(1.18); }
+.ust-legend-item { transition: background-color .15s ease, opacity .15s ease; }
+.ust-legend-dot { transition: transform .15s ease; }
+.ust-legend-line { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--rate); flex: none; }
+@media (prefers-reduced-motion: reduce) { .ust-rate-line, .ust-rate-dot { transition: none; } }
 .ust-legend--above + .ust-legend--above { margin-top: -4px; }
 .ust-legend-item {
 	display: flex; align-items: center; gap: 7px;
@@ -640,6 +670,9 @@ body[data-ds-dark-theme] .ust-tbl th, body[data-ds-dark-theme] .ust-tbl td { bor
 .ust-tbl th { color: var(--muted, #5F5E59); font-weight: 600; font-size: 12px; }
 .ust-tbl tbody tr:hover { background: var(--hover, #EDECE7); }
 .ust-tblNum { text-align: right; font-variant-numeric: tabular-nums; }
+/* 百分比列：两位小数后最长形态是 "100.00%"（6 字符）。
+   给最小值 + 等宽数字，避免 "0%" 与 "100.00%" 同行时列宽抖动、右侧数值列被顶弯。 */
+.ust-tblPct { min-width: 62px; }
 .ust-tblName { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
 /* 会话名称：名称为主、id 为副，仍保持单行省略 */
 .ust-tblName .ust-tblId { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted, #5F5E59); }

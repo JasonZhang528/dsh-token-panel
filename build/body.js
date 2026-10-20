@@ -20,6 +20,19 @@ window.__ModuleLoader__.load({
 			if (n >= 1e4) return (n / 1e4).toFixed(1) + "万";
 			return String(Math.round(n));
 		}
+		// 金额格式化（CNY）。关键点：API 费用经常是几分钱量级，
+		// 若沿用 fmtLarge 的「万/亿」口径，0.25 元会被显示成 0 —— 那等于说免费。
+		// 故按量级给精度：<1 元给 4 位小数，<100 给 2 位，其余给整数。
+		// 金额格式化（CNY）：一律两位小数、四舍五入。
+		// 早期版本按量级给精度（<1 元给 4 位、>=100 取整），导致同一列里
+		// "¥0.2486" 与 "¥1,235" 位数不一，对不齐也难比较。统一两位后
+		// 千分位交给 toLocaleString，列内视觉一致。
+		function fmtCost(n) {
+			const v = Number(n);
+			if (!isFinite(v)) return "—";
+			const s = Math.abs(v).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+			return (v < 0 ? "-¥" : "¥") + s;
+		}
 		function fmtFull(n) {
 			return (Number(n) || 0).toLocaleString("zh-CN");
 		}
@@ -130,9 +143,12 @@ window.__ModuleLoader__.load({
 			const def = RANGES.find((x) => x.id === r.id) || RANGES[3];
 			return { id: def.id, label: def.label, dateKeys: def.build(now) };
 		}
+		// 按窗口取天。wnd 为 null 时取全部天——用于「全局色序」这类与时间范围无关的口径
+		// （切区间时颜色不应变化）。
 		function fillDays(days, wnd) {
 			const map = new Map();
 			(days || []).forEach((d) => map.set(d.date, d));
+			if (!wnd) return [...map.values()];
 			return (wnd.dateKeys || []).map((k) => map.get(k) || { date: k, total: 0, turns: 0, byModel: [] });
 		}
 
@@ -144,6 +160,8 @@ window.__ModuleLoader__.load({
 		const IconToken = () => icon(["M12 2L2 7l10 5 10-5-10-5z", "M2 17l10 5 10-5", "M2 12l10 5 10-5"]);
 		const IconBolt = () => icon(["M13 2L3 14h9l-1 8 10-12h-9l1-8z"]);
 		const IconChat = () => icon(["M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"]);
+		// 币符（羊角币）：费用指标专用图标，与 Token/闪电等语义区分
+		const IconCoin = () => icon(["M8 3h8a6 6 0 0 1 0 12H8a6 6 0 0 1 0-12z", "M13 7v1"]);
 		const IconCalendar = () => icon(["M3 4h18v18H3z", "M16 2v4", "M8 2v4", "M3 10h18"]);
 		const IconTrend = () => icon(["M23 6l-9.5 9.5-5-5L1 18", "M17 6h6v6"]);
 		const IconMail = () => icon(["M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z", "M22 6l-10 7L2 6"]);
@@ -280,16 +298,27 @@ window.__ModuleLoader__.load({
 			cacheWrite: a.cacheWrite + (m.cacheWrite || 0),
 			total: a.total + (m.total || 0),
 		}), { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 });
-		function foldModels(list, n = 4) {
+		// 折叠模型列表：按用量降序取前 n 个，其余并成「其他 N 个模型」。
+		// ranks（可选）：外部给定的「模型 → 色序号」映射。传入时按外部序号取色，
+		// 使同一模型在不同页面（用量统计 / 会话用量）保持同一颜色——
+		// 否则两页各自按自己的窗口排序，同一模型会拿到不同色槽，图例对不上。
+		function foldModels(list, n = 4, ranks = null) {
 			const sorted = [...list].sort((a, b) => b.total - a.total);
-			if (sorted.length <= n + 1) return sorted.map((m, i) => ({ ...m, rank: i }));
-			const head = sorted.slice(0, n).map((m, i) => ({ ...m, rank: i }));
+			const rankOf = (m, i) => (ranks && ranks.has(m.model) ? ranks.get(m.model) : i);
+			if (sorted.length <= n + 1) return sorted.map((m, i) => ({ ...m, rank: rankOf(m, i) }));
+			const head = sorted.slice(0, n).map((m, i) => ({ ...m, rank: rankOf(m, i) }));
 			const tail = sorted.slice(n);
+			// 「其他」桶的序号：外部 ranks 下真实模型可能已占用 0..n-1，
+			// 直接用 n 会与其中某个模型同色（撞色，读者无法分辨）。
+			// 故取「已占用序号之外」的一个，保证与任何模型都不撞。
+			const used = new Set(head.map((m) => m.rank));
+			let otherRank = n;
+			while (used.has(otherRank)) otherRank++;
 			head.push({
 				model: "其他 " + tail.length + " 个模型",
 				...sumMetrics(tail),
 				children: tail,
-				rank: n,
+				rank: otherRank,
 			});
 			return head;
 		}
@@ -301,6 +330,7 @@ window.__ModuleLoader__.load({
 				cur.input += x.input || 0; cur.output += x.output || 0;
 				cur.cacheRead += x.cacheRead || 0; cur.cacheWrite += x.cacheWrite || 0;
 				cur.total += x.total || 0;
+				if (typeof x.cost === "number") cur.cost = (cur.cost || 0) + x.cost;
 				if (!cur.color && x.color) cur.color = x.color;
 				m.set(x.model, cur);
 			}));
@@ -314,8 +344,29 @@ window.__ModuleLoader__.load({
 			if (total <= 0) return null;
 			return (m.cacheRead || 0) / total;
 		}
+		// 百分比统一收口：一律保留两位小数。
+		// 命中率 / 占比这类值大量落在 1%~20% 区间，取整后退化成 0% 或 1%，
+		// 会丢掉「同一列里哪个更高」的可比性，故统一给到两位。
+		//
+		// 两个入口只差入参口径，调用处不必各自写换算：
+		//   pctRatio(r)  —— 入参是 0~1 的比例（命中率）
+		//   pctOf(a, b)  —— 入参是「部分 / 整体」，分母 <= 0 给占位
+		function pctValue(v) {
+			// v 已是百分数值；-0 归一成 0，避免输出 "-0.00%"
+			if (v === 0) return "0%";
+			return (Math.round(v * 100) / 100).toFixed(2) + "%";
+		}
+		function pctRatio(r) {
+			if (r === null || r === undefined || !isFinite(r)) return "—";
+			return pctValue(Number(r) * 100);
+		}
+		function pctOf(part, whole) {
+			const w = Number(whole) || 0;
+			if (w <= 0) return "—";
+			return pctValue((Number(part) || 0) / w * 100);
+		}
 		function fmtPct(r) {
-			return r === null || r === undefined ? "—" : Math.round(r * 100) + "%";
+			return pctRatio(r);
 		}
 		// 时长：毫秒 -> 中文可读。不足 1 分钟显示「<1 分」，避免出现「0 分」误导
 		function fmtDuration(ms) {
@@ -346,9 +397,12 @@ window.__ModuleLoader__.load({
 		// 窗口内「模型 → 配色序号」，必须沿用与柱状图相同的折叠规则：
 		// 被并进「其他 N 个模型」的尾部模型统一取该聚合段的颜色——
 		// 它们在图上本来就是这个颜色，若另给一个序号，色点就会与图例冲突（第 6 名之后必现）。
+		// 模型 → 色序号映射。wnd 为 null 时按全量 days 计算——
+		// 全局色序不受时间范围影响，切换区间时颜色不变，
+		// 且「用量统计」与「会话用量」两页取同一份，图例颜色天然对齐。
 		function modelRanksIn(days, wnd) {
 			const m = new Map();
-			foldModels(modelTotalsIn(days, wnd), MODEL_FOLD).forEach((s) => {
+			foldModels(modelTotalsIn(days, wnd || null), MODEL_FOLD).forEach((s) => {
 				if (s.children) s.children.forEach((c) => m.set(c.model, s.rank));
 				else m.set(s.model, s.rank);
 			});
@@ -389,6 +443,8 @@ window.__ModuleLoader__.load({
 						bm.input += m.input || 0; bm.output += m.output || 0;
 						bm.cacheRead += m.cacheRead || 0; bm.cacheWrite += m.cacheWrite || 0;
 						bm.total += m.total || 0;
+				// 费用按型号累加（同一次批处理的日均费用可加）；无价保持未定价，不用 0 冒充
+				if (typeof m.cost === "number") bm.cost = (bm.cost || 0) + m.cost;
 						if (!bm.color && m.color) bm.color = m.color;
 						cur.byModel[m.model] = bm;
 					});
@@ -479,6 +535,12 @@ window.__ModuleLoader__.load({
 			return element("div", { className: "ust-metrics" },
 				// 第二行统一 TOKENS 文本：与「窗口 Token」「缓存命中」同一套卡面语言
 				element(Metric, { icon: element(IconToken), label: "累计", value: fmtLarge(s.totalTokens), sub: "TOKENS" }),
+				// 累计费用（全历史，不受时间范围影响）。null = 型号全未定价。
+				element(Metric, {
+					icon: element(IconCoin), label: "累计费用",
+					value: s.totalCost === null || s.totalCost === undefined ? "未定价" : fmtCost(s.totalCost),
+					sub: s.totalCost === null || s.totalCost === undefined ? "价格表未收录这些型号" : "CNY · 按 1M token 单价",
+				}),
 				element(Metric, { icon: element(IconBolt), label: "单日峰值", value: fmtLarge(s.peakDayTokens), sub: "历史最高一天" }),
 				element(Metric, { icon: element(IconChat), label: "最长会话", value: fmtDuration(s.longestSessionMs), sub: "单个会话持续最久", text: true }),
 				element(Metric, { icon: element(IconCalendar), label: "当前连续", value: String(s.currentStreak || 0) + " 天", sub: "有用量的连续天" }),
@@ -675,6 +737,7 @@ window.__ModuleLoader__.load({
 				const b1 = peakMetric * 0.12, b2 = peakMetric * 0.33, b3 = peakMetric * 0.66;
 				return ["无", "≤ " + fmtV(b1), fmtV(b1) + " – " + fmtV(b2), fmtV(b2) + " – " + fmtV(b3), "> " + fmtV(b3)];
 			})();
+
 
 			return element("div", { className: "ust-block" },
 				element("div", { className: "ust-block-head ust-gh-head" },
@@ -1012,8 +1075,9 @@ window.__ModuleLoader__.load({
 							element("th", { className: "ust-tblNum" }, "输出"),
 							element("th", { className: "ust-tblNum" }, "缓存命中"),
 							element("th", { className: "ust-tblNum" }, "总量"),
-							element("th", { className: "ust-tblNum" }, "命中率"),
-							element("th", { className: "ust-tblNum" }, "占比"),
+							element("th", { className: "ust-tblNum ust-tblPct" }, "命中率"),
+							element("th", { className: "ust-tblNum" }, "费用"),
+							element("th", { className: "ust-tblNum ust-tblPct" }, "占比"),
 							element("th", null, "模型明细"),
 							element("th", null, "最近活动"),
 						)),
@@ -1041,8 +1105,10 @@ window.__ModuleLoader__.load({
 							// 与表头严格对应：缓存命中在前、总量在后（此前漏改导致两列互换，Sir 实测发现的正是这个）
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.cacheRead)),
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.total)),
-							element("td", { className: "ust-tblNum" }, fmtPct(hitRateOf(r))),
-							element("td", { className: "ust-tblNum" }, (grand > 0 ? Math.round((r.total / grand) * 100) : 0) + "%"),
+							// 费用：null = 该会话型号全部未定价；显示「未定价」而非 ¥0（0 会被读成免费）
+							element("td", { className: "ust-tblNum ust-tblPct" }, fmtPct(hitRateOf(r))),
+							element("td", { className: "ust-tblNum" }, (typeof r.cost === "number" ? fmtCost(r.cost) : "未定价")),
+							element("td", { className: "ust-tblNum ust-tblPct" }, pctOf(r.total, grand)),
 							element("td", null, (r.byModel || []).slice(0, 4).map((m, i) =>
 								element("span", { key: i, className: "ust-dot", title: m.model + "：" + fmtLarge(m.total), style: { background: colorVarFor(m.model, ranks) } }))),
 							element("td", { className: "ust-tblSub" }, fmtWhen(r.lastTime || r.createdAt)),
@@ -1109,8 +1175,9 @@ window.__ModuleLoader__.load({
 									element("th", { className: "ust-tblNum" }, "输出"),
 									element("th", { className: "ust-tblNum" }, "缓存命中"),
 									element("th", { className: "ust-tblNum" }, "总量"),
-									element("th", { className: "ust-tblNum" }, "命中率"),
-									element("th", { className: "ust-tblNum" }, "占比"),
+									element("th", { className: "ust-tblNum ust-tblPct" }, "命中率"),
+									element("th", { className: "ust-tblNum" }, "费用"),
+									element("th", { className: "ust-tblNum ust-tblPct" }, "占比"),
 								)),
 								element("tbody", null, pageRows.map((m) => element("tr", { key: m.model },
 									element("td", null, element("div", { className: "ust-tblName" },
@@ -1120,8 +1187,9 @@ window.__ModuleLoader__.load({
 									element("td", { className: "ust-tblNum" }, fmtLarge(m.output)),
 									element("td", { className: "ust-tblNum" }, fmtLarge(m.cacheRead)),
 									element("td", { className: "ust-tblNum" }, fmtLarge(m.total)),
-									element("td", { className: "ust-tblNum" }, fmtPct(hitRateOf(m))),
-									element("td", { className: "ust-tblNum" }, (sum > 0 ? Math.round((m.total / sum) * 100) : 0) + "%"),
+									element("td", { className: "ust-tblNum ust-tblPct" }, fmtPct(hitRateOf(m))),
+									element("td", { className: "ust-tblNum" }, (typeof m.cost === "number" ? fmtCost(m.cost) : "未定价")),
+									element("td", { className: "ust-tblNum ust-tblPct" }, pctOf(m.total, sum)),
 								))),
 							),
 						),
@@ -1157,6 +1225,8 @@ window.__ModuleLoader__.load({
 						bm.input += m.input || 0; bm.output += m.output || 0;
 						bm.cacheRead += m.cacheRead || 0; bm.cacheWrite += m.cacheWrite || 0;
 						bm.total += m.total || 0;
+				// 费用按型号累加（同一次批处理的日均费用可加）；无价保持未定价，不用 0 冒充
+				if (typeof m.cost === "number") bm.cost = (bm.cost || 0) + m.cost;
 						if (!bm.color && m.color) bm.color = m.color;
 						acc.byModel[m.model] = bm;
 					});
@@ -1191,6 +1261,9 @@ window.__ModuleLoader__.load({
 			}, []);
 			const todayKey = dateKey(new Date());
 			const days = (data && data.days) || [];
+			// 全局色序：按全量 days 计算，不受时间范围影响 ——
+			// 与「用量统计」页取同一份，两个页面的图例颜色因此一致。
+			const globalRanks = react.useMemo(() => modelRanksIn(days, null), [days]);
 			const today = data ? sessionUsageAggregate(days, sessionId, todayKey) : null;
 			const all = data ? sessionUsageAggregate(days, sessionId, null) : null;
 			const metricCard = (label, value, sub) => element("div", { key: label, className: "ust-metric" },
@@ -1220,7 +1293,8 @@ window.__ModuleLoader__.load({
 								element("th", { className: "ust-tblNum" }, "输出"),
 								element("th", { className: "ust-tblNum" }, "缓存命中"),
 								element("th", { className: "ust-tblNum" }, "总量"),
-								element("th", { className: "ust-tblNum" }, "命中率"),
+								element("th", { className: "ust-tblNum ust-tblPct" }, "命中率"),
+								element("th", { className: "ust-tblNum" }, "费用"),
 								element("th", { className: "ust-tblNum" }, "占比"))),
 							element("tbody", null, models.map((m) => element("tr", { key: m.model },
 								element("td", null, element("div", { className: "ust-provCell" },
@@ -1230,8 +1304,10 @@ window.__ModuleLoader__.load({
 								element("td", { className: "ust-tblNum" }, fmtLarge(m.output)),
 								element("td", { className: "ust-tblNum" }, fmtLarge(m.cacheRead)),
 								element("td", { className: "ust-tblNum" }, fmtLarge(m.total)),
-								element("td", { className: "ust-tblNum" }, fmtPct(hitRateOf(m))),
-								element("td", { className: "ust-tblNum" }, (mSum > 0 ? Math.round((m.total / mSum) * 100) : 0) + "%")))),
+								// 费用：null = 未定价；显示「未定价」而非 ¥0
+								element("td", { className: "ust-tblNum ust-tblPct" }, fmtPct(hitRateOf(m))),
+								element("td", { className: "ust-tblNum" }, (typeof m.cost === "number" ? fmtCost(m.cost) : "未定价")),
+								element("td", { className: "ust-tblNum" }, pctOf(m.total, mSum))))),
 						),
 					) : element("div", { className: "ust-placeholder" }, "该口径下本会话尚无用量记录"),
 				);
@@ -1284,8 +1360,9 @@ window.__ModuleLoader__.load({
 							element("th", { className: "ust-tblNum" }, "输出"),
 							element("th", { className: "ust-tblNum" }, "缓存命中"),
 							element("th", { className: "ust-tblNum" }, "总量"),
-							element("th", { className: "ust-tblNum" }, "命中率"),
-							element("th", { className: "ust-tblNum" }, "占比"),
+							element("th", { className: "ust-tblNum ust-tblPct" }, "命中率"),
+							element("th", { className: "ust-tblNum" }, "费用"),
+							element("th", { className: "ust-tblNum ust-tblPct" }, "占比"),
 							element("th", null, "模型明细"),
 						)),
 					element("tbody", null,
@@ -1306,8 +1383,10 @@ window.__ModuleLoader__.load({
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.output)),
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.cacheRead)),
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.total)),
-							element("td", { className: "ust-tblNum" }, fmtPct(hitRateOf(r))),
-							element("td", { className: "ust-tblNum" }, (grand > 0 ? Math.round((r.total / grand) * 100) : 0) + "%"),
+							// 费用：null = 该会话型号全部未定价；显示「未定价」而非 ¥0（0 会被读成免费）
+							element("td", { className: "ust-tblNum ust-tblPct" }, fmtPct(hitRateOf(r))),
+							element("td", { className: "ust-tblNum" }, (typeof r.cost === "number" ? fmtCost(r.cost) : "未定价")),
+							element("td", { className: "ust-tblNum ust-tblPct" }, pctOf(r.total, grand)),
 							element("td", null, (r.byModel || []).slice(0, 4).map((m, i) =>
 								element("span", { key: i, className: "ust-dot", title: m.model + "：" + fmtLarge(m.total), style: { background: colorVarFor(m.model, ranks) } }))),
 						)),
@@ -1334,12 +1413,15 @@ window.__ModuleLoader__.load({
 		// variant："bar"（默认，堆叠柱）| "line"（多模型折线，每模型一条）。
 		// showRangeLabel：右侧是否显示区间文案（主面板显示「今天/全部」，会话页两种图表都不需要）。
 		// onPick / pickKey：可选点选联动。用量页「日期趋势」点柱后下方小时趋势跟随切换。
-		function Trend({ days, window: wnd, title, variant = "bar", showRangeLabel = true, onPick, pickKey }) {
+		function Trend({ days, window: wnd, title, variant = "bar", showRangeLabel = true, onPick, pickKey, ranks = null }) {
 			const [boxRef, boxW] = useMeasure();
 			const [hidden, setHidden] = react.useState({});
 			const [hover, setHover] = react.useState(null);
 			const [placeTip, clearTip, tipEl] = useTip();
 			const scrollRef = react.useRef(null);
+			// 柱高指标：token = 用量（默认，堆叠柱）；cost = 费用（同色堆叠，柱高为 CNY）
+			// 两者共用同一套堆叠与配色，只换「每段取哪个数」，图例与悬停保持一致。
+			const [metric, setMetric] = react.useState("token");
 
 			// 折线模式：一条线 = 一个模型（点高 = 当期用量）；默认堆叠柱。
 			const isLine = variant === "line";
@@ -1358,19 +1440,41 @@ window.__ModuleLoader__.load({
 			const BAR_LABEL_W = 46;
 			// 窄面板里柱子太多会糊成一团：按宽度决定显示几条
 			// 与表格配色的折叠档数保持一致，否则色点与图例会对不上
-			const series = react.useMemo(() => foldModels(modelTotalsIn(days, wnd), MODEL_FOLD), [days, wnd]);
-			// 把一个 fold 出来的段（可能是「其他 N 个模型」）在当期的 byModel 里还原成用量
+			const series = react.useMemo(() => foldModels(modelTotalsIn(days, wnd), MODEL_FOLD, ranks), [days, wnd, ranks]);
+			// 把一个 fold 出来的段（可能是「其他 N 个模型」）在当期的 byModel 里还原成用量或费用。
+			// metric === "cost" 时取 cost；某模型无价（cost 非数字）按 0 计，
+			// 这样柱高只反映「有价的那些」，与表格里的「未定价」口径一致（不猜价）。
+			const fieldOf = (x) => (metric === "cost" ? (typeof x.cost === "number" ? x.cost : 0) : (x.total || 0));
 			const segTotalOf = (by, s) => (s.children
-				? s.children.reduce((acc, c) => acc + (((by.find((x) => x.model === c.model) || {}).total) || 0), 0)
-				: (((by.find((x) => x.model === s.model) || {}).total) || 0));
+				? s.children.reduce((acc, c) => acc + fieldOf(by.find((x) => x.model === c.model) || {}), 0)
+				: fieldOf(by.find((x) => x.model === s.model) || {}));
 			const values = react.useMemo(() => xData.map((d) => {
 				const by = d.byModel || [];
 				const vals = series.map((s) => segTotalOf(by, s));
 				return { total: vals.reduce((a, b) => a + b, 0), vals };
-			}), [xData, series]);
+			}), [xData, series, metric]);
 
-			const visible = series.map((s) => !hidden[s.model]);
+			// 图例交互：聚焦选择（focus）——点某项只看它的数据，其余隐藏；再点同项取消。
+			// 旧的「显隐切换」会让用户逐个关掉不想看的模型（点 N-1 次），
+			// 且无法同时突出某一个。聚焦只需一次点击。
+			const focus = hidden.focus || null;
+			const visible = series.map((s) => (focus ? s.model === focus : true));
 			const visTotals = values.map((v) => v.vals.reduce((a, b, i) => a + (visible[i] ? b : 0), 0));
+			// 命中率折线：逐期按「缓存命中 / 当期满量」算，与各表的命中率同口径。
+			// 分母为 0 的期（无用量）返回 null，折线在该点断开而不是掉到 0%
+			// ——0% 会被读成「命中率极差」，而实际只是当期没有调用。
+			// 按当前指标格式化数值：token 用万/亿量级，费用用金额格式。
+			// 两者量级差好几个数量级（亿 tokens vs 几元），共用一套格式必然失真。
+			const fmtVal = (v) => (metric === "cost" ? fmtCost(v) : fmtLarge(v));
+			const unitOf = metric === "cost" ? "CNY" : "tokens";
+			const rateSeries = react.useMemo(() => xData.map((d) => {
+				let cr = 0, sum = 0;
+				for (const m of d.byModel || []) {
+					cr += m.cacheRead || 0;
+					sum += (m.input || 0) + (m.output || 0) + (m.cacheRead || 0) + (m.cacheWrite || 0);
+				}
+				return sum > 0 ? cr / sum : null;
+			}), [xData]);
 			// 刻度按峰值向上取整到「好看的整档」：如 94,553,214 → 95,000,000（刻度 9500万）。
 			// 取整档位取最高两位有效数字所在的量级（10 万 / 100 万 / 1000 万 …），
 			// 既让刻度标签落在整值上，又保证最高柱不贴顶（留 ~5% 余量）。
@@ -1473,7 +1577,7 @@ window.__ModuleLoader__.load({
 			const grid = [
 				element("line", { key: "g0", className: "ust-grid", x1: PAD_L, y1: topY, x2: PAD_L + plotW, y2: topY }),
 				element("line", { key: "g1", className: "ust-baseline", x1: PAD_L, y1: baseY, x2: PAD_L + plotW, y2: baseY }),
-				element("text", { key: "t0", className: "ust-axis", x: PAD_L - 7, y: topY + 4, textAnchor: "end" }, fmtLarge(peakTotal)),
+				element("text", { key: "t0", className: "ust-axis", x: PAD_L - 7, y: topY + 4, textAnchor: "end" }, fmtVal(peakTotal)),
 			];
 
 			// X 轴：逐格出刻度，把全部时间点 / 日期都标出来。
@@ -1566,8 +1670,49 @@ window.__ModuleLoader__.load({
 					y: y(v.total) - BAR_VAL_GAP,
 					x: xc(i),
 					textAnchor: "middle",
-				}, fmtLarge(v.total));
+				}, fmtVal(v.total));
 			});
+
+			// 命中率折线（右轴 0~100%）：叠加在柱图之上，用线形区分于柱形的用量。
+			// 关键取舍：折线点位与柱心同一 x，y 由 0~100% 映射到绘图区全高，
+			// 这样「柱高看用量、线高看命中率」两条信息互不干扰。
+			// null 期（无用量）跳过并断开线段——不连到 0%，那会读成「命中率极差」。
+			// 命中率折线（右轴 0~100%）：实线叠加在柱图之上。
+			// 三个显式条件：
+			//   · 费用模式下不画 —— 柱高已是金额，再叠命中率会让「柱看什么」失焦；
+			//   · 小时趋势不画 —— 单日 24 点的命中率抖动大、噪声多，读不出趋势；
+			//   · 折线模式（variant=line）不画 —— 那条线本身已是数据。
+			const rateLine = (() => {
+				if (isLine || metric === "cost" || isHour) return null;
+				const pts = [];
+				rateSeries.forEach((r, i) => { if (r !== null) pts.push({ i, r }); });
+				if (pts.length < 1) return null;
+				const yOf = (r) => baseY - (baseY - topY) * Math.max(0, Math.min(1, r));
+				// 相邻索引差 > 1 说明中间有空洞：断开成多段，不跨越空期连线
+				const segs = [];
+				let cur = [];
+				pts.forEach((p, k) => {
+					if (k > 0 && p.i - pts[k - 1].i > 1) { if (cur.length) segs.push(cur); cur = []; }
+					cur.push(p);
+				});
+				if (cur.length) segs.push(cur);
+				return element("g", { className: "ust-rate" },
+					// 右轴刻度：只画 0 / 50 / 100 三条短刻度，避免与左轴刻度抢注意力
+					[0, 0.5, 1].map((r) => element("text", {
+						key: "rl" + r, className: "ust-rate-axis",
+						x: W - PAD_R + 2, y: yOf(r) + 3, textAnchor: "start",
+					}, pctRatio(r))),
+					segs.map((sg, si) => sg.length === 1
+						? element("circle", {
+							key: "rp" + si, className: "ust-rate-dot",
+							cx: xc(sg[0].i), cy: yOf(sg[0].r), r: 2.5,
+						})
+						: element("polyline", {
+							key: "rl" + si, className: "ust-rate-line",
+							points: sg.map((p) => xc(p.i) + "," + yOf(p.r)).join(" "),
+						})),
+				);
+			})();
 
 			const onMove = (e) => {
 				if (!boxW) return;
@@ -1580,13 +1725,13 @@ window.__ModuleLoader__.load({
 							element("span", { className: "ust-tip-swatch", style: { background: cVar(s.rank) } }),
 							element("span", null, s.model)),
 						// 模型分项同样走万 / 亿量级，与合计行同一套读法
-						element("span", { className: "ust-tip-val" }, fmtLarge(values[i].vals[k])))
+						element("span", { className: "ust-tip-val" }, fmtVal(values[i].vals[k])))
 					: null);
 				placeTip(e, element("div", null,
 					element("div", { className: "ust-tip-title" }, (isHour ? fmtDayLabel(singleDate) + " " : "") + xLabel(xData[i])),
 					// 数量一律走「万 / 亿」量级：裸千分位（63,701,235）要逐位数位，
 					// 且与下面的量级值重复显示。小于 1 万时 fmtLarge 本就是精确值，不损失信息。
-					element("div", { className: "ust-tip-body" }, "合计 " + fmtLarge(visTotals[i]) + " tokens"),
+					element("div", { className: "ust-tip-body" }, "合计 " + fmtVal(visTotals[i]) + " " + unitOf),
 					rows,
 				));
 			};
@@ -1595,27 +1740,54 @@ window.__ModuleLoader__.load({
 				element("div", { className: "ust-block-head" },
 					element("div", { className: "ust-block-titleRow" },
 						element("h2", { className: "ust-h2" }, title || (isHour ? "按小时的用量分布" : "用量趋势")),
-						element("div", { className: "ust-sub" }, isLine ? "一条线 = 一个模型，点高 = 当期用量" : "一根柱 = 一个模型，柱高 = 当期用量"),
+						element("div", { className: "ust-sub" },
+							isLine ? "一条线 = 一个模型，点高 = 当期用量"
+								: metric === "cost" ? "一根柱 = 一个模型，柱高 = 当期费用（CNY）"
+								: "一根柱 = 一个模型，柱高 = 当期总量"),
 					),
 					showRangeLabel ? element("div", { className: "ust-sub" }, wnd.label) : null,
+					// 指标切换 + 命中率折线开关：与图例同处右侧，不另占一行
+					element("div", { className: "ust-trendCtrl" },
+						element("div", { className: "ust-trendSeg", role: "tablist", "aria-label": "柱高指标" },
+							[["token", "总量"], ["cost", "费用"]].map(([id, lab]) => element("span", {
+								key: id, role: "tab", "aria-selected": metric === id,
+								className: "ust-tab" + (metric === id ? " active" : ""),
+								onClick: () => setMetric(id),
+							}, lab)),
+						),
+					),
 				),
 				// 图例置于图表上方
 				element("div", { className: "ust-legend ust-legend--above" },
-					series.map((s) => element("span", {
-						key: s.model,
-						className: "ust-legend-item",
-						style: { opacity: hidden[s.model] ? 0.4 : 1 },
-						onClick: () => setHidden((h) => ({ ...h, [s.model]: !h[s.model] })),
-						role: "button", tabIndex: 0,
-					},
-						element("span", { className: "ust-legend-dot " + cB(s.rank) }),
-						element("span", null, s.model),
-					)),
+					series.map((s) => {
+						const isFocus = focus === s.model;
+						const dim = focus && !isFocus;
+						return element("span", {
+							key: s.model,
+							className: "ust-legend-item" + (isFocus ? " is-focus" : "") + (dim ? " is-dim" : ""),
+							style: { opacity: dim ? 0.35 : 1 },
+							title: isFocus ? "点击取消聚焦，恢复全部模型" : "点击只看这个模型",
+							onClick: () => setHidden((h) => ({ ...h, focus: h.focus === s.model ? null : s.model })),
+							role: "button", tabIndex: 0,
+							"aria-pressed": isFocus,
+						},
+							element("span", { className: "ust-legend-dot " + cB(s.rank) }),
+							element("span", null, s.model),
+						);
+					}),
+					// 命中率折线条目：只有真画折线时才出现，避免图例承诺了图里没有的东西。
+					// 用「线」形标识而非色点，与图中的实线一一对应。
+					!isLine && metric !== "cost" && !isHour
+						? element("span", { className: "ust-legend-item ust-legend-item--rate", title: "缓存命中率（右轴 0–100%）" },
+							element("span", { className: "ust-legend-line" }),
+							element("span", null, "命中率"),
+						)
+						: null,
 				),
 				element("div", { ref: boxRef },
 					element("div", { className: "ust-plot" + (needScroll ? " is-scroll" : ""), ref: scrollRef },
 						boxW > 0 ? element("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": isLine ? "用量分布折线图" : "用量分布柱状图" },
-							grid, xAxis, isLine ? lineSeries : bars, isLine ? null : barLabels,
+							grid, xAxis, isLine ? lineSeries : bars, isLine ? null : barLabels, rateLine,
 							hover !== null && element("line", { className: "ust-cursor", x1: xc(hover), y1: topY, x2: xc(hover), y2: baseY }),
 							// 命中层铺满整个 SVG，且渲染在柱体之后——SVG 中后渲染者恒在上层，
 							// 柱子因此点不到（实测 elementFromPoint 返回 rect.ust-hit）。
@@ -1640,7 +1812,7 @@ window.__ModuleLoader__.load({
 
 		// ---------- 3) 模型用量 ----------
 		// 一刻度 = 1%，段内刻度同色，段名与数值由下方列表承担（窄容器不放外圈标签）
-		function Donut({ days, window: wnd }) {
+		function Donut({ days, window: wnd, ranks = null }) {
 			const [boxRef, boxW] = useMeasure();
 			const [active, setActive] = react.useState(null);
 			const [placeTip, clearTip, tipEl] = useTip();
@@ -1650,7 +1822,7 @@ window.__ModuleLoader__.load({
 
 			const list = modelTotalsIn(days, wnd);
 			const sum = list.reduce((s, m) => s + m.total, 0);
-			const segs = foldModels(list, 5);
+			const segs = foldModels(list, 5, ranks);
 			// 页码安全：数据变化（切区间 / 刷新）后页码可能越界，钳到有效范围
 			const pageCount = Math.max(1, Math.ceil(segs.length / PAGE_SIZE));
 			const safePage = Math.min(page, pageCount - 1);
@@ -1708,7 +1880,7 @@ window.__ModuleLoader__.load({
 					const tip = element("div", null,
 						element("div", { className: "ust-tip-title" }, s.model),
 						// 数量统一万 / 亿量级：不再给裸千分位，也不与量级值重复
-						element("div", { className: "ust-tip-body" }, "合计 " + fmtLarge(s.total) + " tokens · 占比 " + (sum > 0 ? (s.total / sum * 100).toFixed(1) : "0") + "%"),
+						element("div", { className: "ust-tip-body" }, "合计 " + fmtLarge(s.total) + " tokens · 占比 " + pctOf(s.total, sum)),
 						element("div", { className: "ust-tip-body" }, "缓存命中 " + fmtLarge(s.cacheRead || 0) + " · 命中率 " + fmtPct(hitRateOf(s))),
 						s.children ? element("div", { className: "ust-tip-body" }, "含 " + s.children.map((c) => c.model).join("、")) : null,
 					);
@@ -1751,7 +1923,7 @@ window.__ModuleLoader__.load({
 									element("span", { className: "ust-model-hit" }, "缓存命中"),
 									element("span", { className: "ust-model-sub" }, "总量"),
 									element("span", { className: "ust-model-rate" }, "命中率"),
-									element("span", { className: "ust-model-val" }, "占比"))),
+									element("span", { className: "ust-model-cost" }, "费用"))),
 							element("ul", { className: "ust-models" },
 							pageRows.map((s) => element("li", {
 								key: s.model,
@@ -1762,7 +1934,12 @@ window.__ModuleLoader__.load({
 							},
 								element("span", { className: "ust-model-name" },
 									element("span", { className: "ust-model-dot " + cB(s.rank) }),
-									element("span", { title: s.children ? s.children.map((c) => c.model).join("、") : s.model }, s.model)),
+									element("span", {
+								// title 补费用：圆环列表六列已满，加列会挤爆定宽；
+								// 悬停即可看到该模型费用，另有列表尾行的合计兜底
+								title: (s.children ? s.children.map((c) => c.model).join("、") : s.model)
+									+ (typeof s.cost === "number" ? " · 费用 " + fmtCost(s.cost) : " · 费用未定价"),
+							}, s.model)),
 								element("span", { className: "ust-model-row" },
 									// 命中率沿用全局口径（缓存命中 / 当期满量）
 									element("span", { className: "ust-model-in" }, fmtLarge(s.input)),
@@ -1770,7 +1947,7 @@ window.__ModuleLoader__.load({
 									element("span", { className: "ust-model-hit" }, fmtLarge(s.cacheRead)),
 									element("span", { className: "ust-model-sub" }, fmtLarge(s.total)),
 									element("span", { className: "ust-model-rate" }, fmtPct(hitRateOf(s))),
-									element("span", { className: "ust-model-val" }, (sum > 0 ? Math.round((s.total / sum) * 100) : 0) + "%")),
+									element("span", { className: "ust-model-cost" }, (typeof s.cost === "number" ? fmtCost(s.cost) : "—"))),
 						)),
 							segs.length > PAGE_SIZE ? element(Pager, { page: safePage, pageCount, total: segs.length, unit: "模型", onChange: setPage }) : null,
 						),
@@ -1848,6 +2025,9 @@ window.__ModuleLoader__.load({
 			}, [autoRefresh, autoEvery, load]);
 
 			const days = (data && data.days) || [];
+			// 全局色序：按全量 days 计算，不受时间范围影响 ——
+			// 与「用量统计」页取同一份，两个页面的图例颜色因此一致。
+			const globalRanks = react.useMemo(() => modelRanksIn(days, null), [days]);
 			const hasData = days.length > 0;
 			const wnd = react.useMemo(() => {
 				if ((typeof range === "string" ? range : range.id) === "all") {
@@ -1857,7 +2037,7 @@ window.__ModuleLoader__.load({
 			}, [range, days]);
 			// 模型配色序号：窗口内按用量降序编号，表格色点 / 柱状图 / 圆环共用，保证同模型同色。
 			// 必须放在加载态早退之前——hooks 数量在两次渲染间必须一致。
-			const ranks = react.useMemo(() => modelRanksIn(days, wnd), [days, wnd]);
+			const ranks = react.useMemo(() => modelRanksIn(days, null), [days]);
 
 			// 日期栏外壳：加载态与主视图共用，保证「先进页面、再出数据」
 			const headerEl = 				element("div", { className: "ust-header" },
@@ -1929,7 +2109,7 @@ window.__ModuleLoader__.load({
 			const winTop = winList.length ? [...winList].sort((a, b) => b.total - a.total)[0] : null;
 			const topName = winTop ? winTop.model : ((data.topModel && data.topModel.name) || "无");
 			const topSub = winTop && stats.total > 0
-				? "占本窗口 " + Math.round((winTop.total / stats.total) * 100) + "%"
+				? "占本窗口 " + pctOf(winTop.total, stats.total) + "%"
 				: "";
 			const avgPerActive = stats.activeDays > 0 ? stats.total / stats.activeDays : 0;
 			// 窗口内会话数与消息数：会话按「天」去重（跨天会话只计一次），消息按天累加
@@ -1946,6 +2126,16 @@ window.__ModuleLoader__.load({
 				cacheRead: winAgg.cacheRead,
 				rate: winAgg.total > 0 ? winAgg.cacheRead / winAgg.total : null,
 			};
+			// 窗口费用（CNY）：先声明再赋值——let 声明若晚于赋值处，运行到赋值会抛 TDZ ReferenceError
+			let winCost = null;
+			// 窗口费用合计：逐天累加；任一天有价即计入，全窗口无价才为 null
+			{
+				let sum = 0, any = false;
+				for (const d of fillDays(days, wnd)) {
+					if (typeof d.cost === "number") { sum += d.cost; any = true; }
+				}
+				winCost = any ? sum : null;
+			}
 			// 窗口显示名：全部区间不显示（此时指标本身就是全历史口径）
 			const winName = wnd.id === "all" ? "" : wnd.label;
 			// 副标题口径：窗口内汇总则补一句全历史，避免读者误以为是全部
@@ -1982,6 +2172,14 @@ window.__ModuleLoader__.load({
 					// 第二行统一为 TOKENS 文本（不带数字）：全量数值已在 tooltip/表格里，卡面保持干净
 					element(Metric, { icon: element(IconToken), label: "窗口 Token", value: fmtLarge(stats.total), sub: "TOKENS" }),
 					element(Metric, { icon: element(IconToken), label: "缓存命中", value: fmtLarge(winStats.cacheRead), sub: "TOKENS" }),
+					// 费用（CNY）：随所选时间范围重算，与 Token 指标同口径。
+					// 值为 null 表示窗口内型号全部未定价——显示「未定价」而不是 ¥0.00，
+					// 因为 0 元会被误读成「免费」。
+					element(Metric, {
+						icon: element(IconCoin), label: "窗口费用",
+						value: winCost === null ? "未定价" : fmtCost(winCost),
+						sub: winCost === null ? "价格表未收录这些型号" : "CNY · 按 1M token 单价",
+					}),
 					element(Metric, { icon: element(IconTrend), label: "命中率", value: fmtPct(winStats.rate), sub: "缓存命中 / 当期满量" }),
 					element(Metric, { icon: element(IconBolt), label: "最常用模型", value: topName, sub: topSub, text: true }),
 					// 会话 / 消息计数卡放行末：Token 类指标优先展示
@@ -2000,7 +2198,7 @@ window.__ModuleLoader__.load({
 				// 多日期窗口：日期柱状图点选联动下方「小时用量趋势」（同会话「用量」tab 的交互）；
 				// 单日期窗口本身就是小时口径，不传联动、不加第二块图。
 				hasData && wnd.dateKeys.length > 0 ? element(Trend, {
-					days, window: wnd,
+					days, window: wnd, ranks: ranks,
 					...(multiDay ? {
 						title: "日期用量趋势",
 						onPick: (d) => setPickDate((cur) => ((cur || autoPick) === d ? null : d)),
@@ -2014,7 +2212,7 @@ window.__ModuleLoader__.load({
 					showRangeLabel: false, title: "小时用量趋势",
 					pickKey: null,
 				}) : null,
-				hasData && wnd.dateKeys.length > 0 ? element(Donut, { days, window: wnd }) : null,
+				hasData && wnd.dateKeys.length > 0 ? element(Donut, { days, window: wnd, ranks: ranks }) : null,
 			element(ProvidersView, { days: days, window: wnd, ranks: ranks }),
 			element(SessionsView, { days: days, window: wnd, meta: data.sessions, ranks: ranks }),
 				// 会话统计下方：插件 / MCP / Skill 三榜 TOP5（随日期区间筛选）
@@ -2262,6 +2460,9 @@ window.__ModuleLoader__.load({
 				);
 			}
 			const days = (data && data.days) || [];
+			// 全局色序：按全量 days 计算，不受时间范围影响 ——
+			// 与「用量统计」页取同一份，两个页面的图例颜色因此一致。
+			const globalRanks = react.useMemo(() => modelRanksIn(days, null), [days]);
 			// 该会话的按天用量 → 合成 days（与主面板组件同构），Trend / Donut 直接复用
 			const sessionDays = days.map((d) => {
 				const s = (d.sessions || []).find((x) => x.id === sessionId);
@@ -2282,16 +2483,29 @@ window.__ModuleLoader__.load({
 				messages: a.messages + d.messages,
 				durationMs: a.durationMs + d.durationMs,
 			}), { total: 0, turns: 0, messages: 0, durationMs: 0 });
+			let sessCost = null;
 			const byModel = {};
 			active.forEach((d) => (d.byModel || []).forEach((m) => {
 				const bm = byModel[m.model] || { model: m.model, color: m.color, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
 				bm.input += m.input || 0; bm.output += m.output || 0;
 				bm.cacheRead += m.cacheRead || 0; bm.cacheWrite += m.cacheWrite || 0;
 				bm.total += m.total || 0;
+				// 费用按型号累加（同一次批处理的日均费用可加）；无价保持未定价，不用 0 冒充
+				if (typeof m.cost === "number") bm.cost = (bm.cost || 0) + m.cost;
+				// 费用按型号累加：cost 是「单价 × 该日四件套」的日均结果，可加；
+				// 无价（null/undefined）保持未定价，不用 0 冒充（0 会被读成免费）
 				if (!bm.color && m.color) bm.color = m.color;
 				byModel[m.model] = bm;
 			}));
 			const allMetrics = sumMetrics(Object.values(byModel));
+			// 会话费用合计（CNY）：按 modelList 逐型号累加；无价为 null
+			{
+				let sum = 0, any = false;
+				for (const m of Object.values(byModel)) {
+					if (typeof m.cost === "number") { sum += m.cost; any = true; }
+				}
+				sessCost = any ? sum : null;
+			}
 			const modelList = Object.values(byModel).sort((a, b) => b.total - a.total);
 			const topModel = modelList[0] || null;
 			const peakDay = active.reduce((mx, d) => (d.total > mx.total ? d : mx), { total: 0, date: null });
@@ -2329,6 +2543,8 @@ window.__ModuleLoader__.load({
 				bm.input += m.input || 0; bm.output += m.output || 0;
 				bm.cacheRead += m.cacheRead || 0; bm.cacheWrite += m.cacheWrite || 0;
 				bm.total += m.total || 0;
+				// 费用按型号累加（同一次批处理的日均费用可加）；无价保持未定价，不用 0 冒充
+				if (typeof m.cost === "number") bm.cost = (bm.cost || 0) + m.cost;
 				if (!bm.color && m.color) bm.color = m.color;
 				hourByModel[m.model] = bm;
 			}));
@@ -2356,11 +2572,17 @@ window.__ModuleLoader__.load({
 			const cards = [
 				element(Metric, { icon: element(IconToken), label: "Token 用量", value: fmtLarge(agg.total), sub: "TOKENS" }),
 				element(Metric, { icon: element(IconToken), label: "缓存命中", value: fmtLarge(allMetrics.cacheRead), sub: "TOKENS" }),
+				// 本会话费用（CNY）。null = 型号全未定价，显示「未定价」而非 ¥0
+				element(Metric, {
+					icon: element(IconCoin), label: "Token 费用",
+					value: sessCost === null ? "未定价" : fmtCost(sessCost),
+					sub: sessCost === null ? "价格表未收录这些型号" : "CNY · 按 1M token 单价",
+				}),
 				element(Metric, { icon: element(IconTrend), label: "命中率", value: fmtPct(hitRateOf(allMetrics)), sub: "缓存命中 / 当期满量" }),
 				element(Metric, {
 					icon: element(IconBolt), label: "最常用模型",
 					value: topModel ? topModel.model : "无",
-					sub: topModel && agg.total > 0 ? "占本会话 " + Math.round((topModel.total / agg.total) * 100) + "%" : "",
+					sub: topModel && agg.total > 0 ? "占本会话 " + pctOf(topModel.total, agg.total) : "",
 					text: true,
 				}),
 				element(Metric, { icon: element(IconChat), label: "轮次", value: String(agg.turns || 0), sub: "对话轮次" }),
@@ -2383,7 +2605,7 @@ window.__ModuleLoader__.load({
 				// 只有一天数据时该图只有一根柱、无横向对比意义，整块隐藏（当天数据由小时趋势完整表达）。
 				activeDates.length > 1
 					? element(Trend, {
-						days: sessionDays, window: dayWnd, title: "日期用量趋势",
+						days: sessionDays, window: dayWnd, ranks: globalRanks, title: "日期用量趋势",
 						showRangeLabel: false,
 						onPick: (d) => setPickDate((cur) => ((cur || autoPick) === d ? null : d)),
 						pickKey: effectivePick,
@@ -2394,14 +2616,14 @@ window.__ModuleLoader__.load({
 				// 不传 onPick / pickKey：小时图是"结果视图"，联动入口只在日期图上。
 				active.length > 0
 					? element(Trend, {
-						days: [hourDay], window: hourWnd,
+						days: [hourDay], window: hourWnd, ranks: globalRanks,
 						showRangeLabel: false,
 						title: "小时用量趋势",
 						pickKey: null,
 					})
 					: null,
 				// 模型用量仍取会话整体（圆环按模型占比，与小时无关）
-				active.length > 0 ? element(Donut, { days: sessionDays, window: wnd }) : null,
+				active.length > 0 ? element(Donut, { days: sessionDays, window: wnd, ranks: globalRanks }) : null,
 				// 与「用量统计」同款三榜 TOP5：插件 / MCP / Skill，各自取本会话 TOP5
 				sessInsights ? element(TopBoards, { insights: sessInsights }) : null,
 				active.length === 0 && data ? element("div", { className: "ust-placeholder" }, "本会话尚无 Token 用量记录") : null,

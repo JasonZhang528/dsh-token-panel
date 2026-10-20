@@ -121,7 +121,165 @@ ok("按天输出会话明细", h.includes("const sessions = [...(d.bySession || 
 ok("按天输出供应商明细", h.includes("const providers = [...(d.byProvider || new Map()).entries()]"));
 ok("按天输出消息数", h.includes("messages: d.messages"));
 ok("会话名取自 session/title 事件", h.includes('case "session/title":') && h.includes("sessionTitle = ev.data.title.trim()"));
-ok("缓存带 schemaVersion", h.includes("const CACHE_SCHEMA_VERSION = 9") && h.includes("schemaVersion: CACHE_SCHEMA_VERSION"));
+ok("缓存带 schemaVersion", h.includes("const CACHE_SCHEMA_VERSION = 10") && h.includes("schemaVersion: CACHE_SCHEMA_VERSION"));
+section("宿主侧：token 费用计价（CNY）");
+// 价格源：宿主维护的 prices-auto.json（300+ 型号，USD/CNY 混排）+ 插件补充价目。
+// 铁律：表里没有的型号绝不猜价，一律进 unpriced 清单，不进总额。
+ok("宿主读 prices-auto.json", /function priceFilePath\(\) \{\s*return join\(dshHome\(\), "storages", "token-stats", "prices-auto\.json"\);/.test(h));
+ok("DSH_HOME 优先级解析（显式 > 环境变量 > 默认）", h.includes("function dshHome()") && h.includes("process.env.DSH_HOME"));
+ok("单价口径为每 1M token", h.includes("const PRICE_PER_MILLION = 1_000_000;"));
+ok("USD 折算 CNY 有显式汇率", h.includes("const USD_TO_CNY = 7.2;"));
+ok("解析宿主表时剔出元数据键", h.includes('if (k.startsWith("_")) continue;'));
+ok("缺 cacheWrite 单价回退 input 价", h.includes('cacheWrite: typeof v.cacheWrite === "number" ? v.cacheWrite : (typeof v.input === "number" ? v.input : 0)'));
+// 无价返回 null 而非 0：0 会被读成「免费」，null 才能表达「不知道」
+ok("无价返回 null 不返回 0", h.includes("function costOf(metrics, price) {") && h.includes("if (!price) return null;"));
+ok("价格表加载失败时退回补充价目", h.includes("priceTable = buildPriceTable(null, PRICE_SUPPLEMENT);"));
+ok("扫描前确保价格表就绪", h.includes("if (!priceTable) await loadPriceTable();"));
+ok("缓存 schema 升至 10（含费用）", h.includes("const CACHE_SCHEMA_VERSION = 10;"));
+ok("响应带 pricing 元数据", h.includes("pricing: {") && h.includes('currency: "CNY"'));
+ok("响应带无价型号清单", h.includes("unpriced: [...unpriced],"));
+// 别名归一：宿主表用 deepseek-flash 键收录显示名为 "DeepSeek V4.1 Flash" 的型号
+ok("型号别名归一", h.includes("function normalizeModelKey(model, supplement)") && h.includes('"deepseek-v4.1-flash": "deepseek-flash"'));
+ok("按天下发 cost", h.includes("cost: sumCost(d.byModel || new Map()),"));
+ok("会话行下发 cost", h.includes("cost: sumCost(new Map((sess.byModel || []).map((m) => [m.model, m]))),"));
+ok("供应商行下发 cost", h.includes("cost: sumCost(o.models || new Map()),"));
+ok("summary 带累计费用", h.includes("totalCost: sumCost(s.modelTotals || new Map()),"));
+
+section("客户端：token 费用展示");
+ok("金额格式化函数存在", c.includes("function fmtCost(n) {"));
+// 回归：API 费用常是几分钱，若沿用万/亿口径会把 0.25 元显示成 0（等于说免费）
+// 需求：费用一律两位小数四舍五入。早期按量级给精度（<1 元 4 位、>=100 取整），
+// 同列位数不一、对不齐，已废弃。
+ok("费用一律两位小数", /Math\.abs\(v\)\.toLocaleString\("zh-CN", \{ minimumFractionDigits: 2, maximumFractionDigits: 2 \}\)/.test(c));
+ok("费用带千分位", c.includes('toLocaleString("zh-CN", { minimumFractionDigits: 2'));
+ok("负数金额符号在前", c.includes('(v < 0 ? "-¥" : "¥")'));
+ok("费用图标存在", c.includes("const IconCoin = () => icon(["));
+ok("主面板有累计费用卡", c.includes('label: "累计费用"'));
+ok("主面板有窗口费用卡", c.includes('label: "窗口费用"'));
+ok("会话页有费用卡", c.includes('label: "Token 费用"'));
+ok("无价显示未定价而非 0 元", (c.match(/: "未定价"/g) || []).length >= 4);
+ok("四张表 + 圆环列表都有费用列", (c.match(/\}, "费用"\)/g) || []).length === 5);
+ok("会话表费用格", c.includes('(typeof r.cost === "number" ? fmtCost(r.cost) : "未定价")'));
+ok("弹窗明细费用格", c.includes('(typeof m.cost === "number" ? fmtCost(m.cost) : "未定价")'));
+// 需求：删除模型列表底部的「合计费用」行（总数在概览卡里已有，列表尾部重复且挤占空间）
+ok("模型列表不再有合计费用行", !c.includes("ust-model-sum") && !c.includes("合计费用"));
+ok("模型 tooltip 带费用", c.includes('typeof s.cost === "number" ? " · 费用 " + fmtCost(s.cost) : " · 费用未定价"'));
+// 聚合器必须保留 cost：会话 tab 的 byModel 是本地重建的，漏带会让全站显示未定价
+ok("聚合器保留 cost（bm）", (c.match(/if \(typeof m\.cost === "number"\) bm\.cost = \(bm\.cost \|\| 0\) \+ m\.cost;/g) || []).length >= 4);
+ok("聚合器保留 cost（cur）", c.includes('if (typeof x.cost === "number") cur.cost = (cur.cost || 0) + x.cost;'));
+ok("合计费用行样式已清理", !c.includes(".ust-model-sum {"));
+ok("合计数值用等宽数字", c.includes("font-variant-numeric: tabular-nums; }"));
+
+section("客户端：百分比统一保留两位小数");
+// 需求：所有百分比（命中率、占比等）一律两位小数。
+// 动机：命中率大量落在 1%~20%，取整后退化成 0% 或 1%，同一列里失去可比性。
+ok("有统一百分比入口 pctValue", c.includes("function pctValue(v) {"));
+ok("命中率入口 pctRatio（0~1 入参）", c.includes("function pctRatio(r) {"));
+ok("占比入口 pctOf（部分/整体）", c.includes("function pctOf(part, whole) {"));
+ok("两位小数格式化", /toFixed\(2\) \+ "%"/.test(c));
+// -0 归一：否则会出现 "-0.00%"
+ok("-0 归一成 0%", c.includes("if (v === 0) return \"0%\";"));
+// 回归：曾有三处各自 Math.round(x*100)，改了一处漏两处
+ok("不再有裸 Math.round(*100)（pctValue 自身除外）",
+  (c.match(/Math\.round\([^)]*\* *100\)/g) || []).length === 1);
+// 回归：圆环 tooltip 曾是 toFixed(1)，现已收口
+ok("圆环 tooltip 占比也走 pctOf", !c.includes('toFixed(1) : "0"'));
+ok("fmtPct 转接到 pctRatio", /function fmtPct\(r\) \{\s*return pctRatio\(r\);/.test(c));
+// 列宽：两位小数后最长 "100.00%"，不加最小宽度会与 "0%" 同行抖动
+ok("百分比列有最小宽度", /\.ust-tblPct \{ min-width: 62px; \}/.test(c));
+ok("圆环占比列放宽至 62px", c.includes(".ust-model-val { width: 62px; }"));
+ok("百分比表头带 pct 类", (c.match(/className: "ust-tblNum ust-tblPct" \}, "命中率"/g) || []).length >= 2);
+ok("百分比数据格带 pct 类", (c.match(/className: "ust-tblNum ust-tblPct"/g) || []).length >= 8);
+
+section("客户端：趋势图费用指标与命中率折线");
+// 需求三项：各统计加费用列（圆环列表）、柱形图加费用、增加命中率折线。
+ok("圆环列表有费用列", c.includes('className: "ust-model-cost" }, "费用"'));
+ok("圆环列表费用列有值", c.includes('typeof s.cost === "number" ? fmtCost(s.cost) : "—"'));
+ok("费用列样式已定义", c.includes(".ust-model-cost {"));
+// 柱形图费用：指标切换 + 按指标取数
+ok("趋势图有指标切换（总量/费用）", c.includes("const [metric, setMetric] = react.useState(\"token\")") && c.includes('["token", "总量"], ["cost", "费用"]'));
+ok("柱状图指标标签为总量而非 Token", !c.includes('["token", "Token"], ["cost", "费用"]'));
+// 热力图的 Token/时长 是另一个组件，不受影响
+ok("热力图指标仍为 Token/时长", c.includes('["token", "Token"], ["time", "时长"]'));
+
+section("客户端：两页图例颜色一致");
+// 需求：会话「用量」tab 参照「用量统计」页，两处图例颜色保持一致。
+// 机制：全局色序 —— 按全量 days 算模型色序号，两页共用同一份，
+// 因此同一模型在两页拿到同一颜色（原先各按自己的窗口排序，色号不同）。
+ok("foldModels 支持外部色序", c.includes("function foldModels(list, n = 4, ranks = null)") && c.includes("ranks.has(m.model) ? ranks.get(m.model) : i"));
+ok("Trend 接受 ranks", c.includes("pickKey, ranks = null })"));
+ok("Donut 接受 ranks", c.includes("function Donut({ days, window: wnd, ranks = null })"));
+ok("fillDays 支持全量（wnd 为 null）", c.includes("if (!wnd) return [...map.values()];"));
+ok("modelRanksIn 支持全量", c.includes("modelTotalsIn(days, wnd || null)"));
+ok("两页都按全量算色序", (c.match(/modelRanksIn\(days, null\)/g) || []).length >= 2);
+ok("会话页用 globalRanks 传给图表", (c.match(/ranks: globalRanks/g) || []).length >= 3);
+ok("主面板图表传 ranks", (c.match(/ranks: ranks/g) || []).length >= 2);
+// 回归：外部色序下「其他 N 个模型」桶若沿用固定序号，会与真实模型撞色
+ok("其他桶序号避开已占用色槽", c.includes("let otherRank = n;") && c.includes("while (used.has(otherRank)) otherRank++;"));
+// 全局色序的收益：切时间范围颜色不变
+ok("色序不随时间范围变化", c.includes("modelRanksIn(days, null)"));
+
+section("客户端：图例聚焦选择与删除命中率勾选");
+// 需求：日期用量趋势图按图例选中来展示对应数据（聚焦），
+// 删除命中率勾选（折线常显），两个页面都改（两页共用 Trend 组件，一处改动即全覆盖）。
+ok("图例为聚焦选择", c.includes("const focus = hidden.focus || null;") && c.includes("visible = series.map((s) => (focus ? s.model === focus : true))"));
+ok("点击图例切换聚焦", c.includes("h.focus === s.model ? null : s.model"));
+ok("聚焦项有视觉标记", c.includes('" is-focus"') && c.includes('" is-dim"'));
+ok("聚焦态可访问（aria-pressed）", c.includes('"aria-pressed": isFocus'));
+ok("聚焦样式已定义", c.includes(".ust-legend-item.is-focus {"));
+// 回归：旧的「显隐切换」需彻底移除
+ok("不再有逐模型显隐切换", !c.includes("[s.model]: !h[s.model]"));
+// tooltip 跟随聚焦：只列聚焦的模型
+ok("tooltip 跟随聚焦过滤", c.includes("series.map((s, k) => visible[k]"));
+// 命中率勾选已删除，折线常显
+ok("已删除命中率勾选开关", !c.includes("ust-trendToggle") && !c.includes("setShowRate"));
+ok("无 showRate 状态残留", !c.includes("showRate"));
+ok("折线常显（仅费用/小时除外）", c.includes('if (isLine || metric === "cost" || isHour) return null;'));
+ok("图例命中率条目随之常显", c.includes('!isLine && metric !== "cost" && !isHour'));
+ok("费用模式按 cost 取段值", c.includes("metric === \"cost\" ? (typeof x.cost === \"number\" ? x.cost : 0)"));
+ok("数值按指标格式化", c.includes("const fmtVal = (v) => (metric === \"cost\" ? fmtCost(v) : fmtLarge(v));"));
+ok("Y 轴刻度按指标格式化", c.includes("fmtVal(peakTotal)"));
+ok("柱顶标签按指标格式化", c.includes("fmtVal(v.total)"));
+ok("tip 合计按指标格式化", c.includes('"合计 " + fmtVal(visTotals[i]) + " " + unitOf'));
+ok("tip 分项按指标格式化", c.includes("fmtVal(values[i].vals[k])"));
+ok("费用模式副标题说明口径", c.includes("柱高 = 当期费用（CNY）"));
+// 命中率折线
+// 需求：删除命中率勾选，折线常显（费用模式与小时趋势除外）
+ok("命中率折线常显（无勾选状态）", !c.includes("showRate"));
+ok("命中率逐期计算", c.includes("const rateSeries = react.useMemo"));
+ok("无用量期返回 null 不断到 0%", c.includes("return sum > 0 ? cr / sum : null;"));
+ok("折线渲染组件", c.includes("const rateLine = (() => {") && c.includes("ust-rate-line"));
+ok("折线在 SVG 中渲染", c.includes("isLine ? null : barLabels, rateLine,"));
+ok("右轴刻度走统一百分比", c.includes("pctRatio(r)"));
+ok("空期断线不跨接", c.includes("if (k > 0 && p.i - pts[k - 1].i > 1)"));
+ok("折线样式已定义", c.includes(".ust-rate-line {") && c.includes(".ust-rate-dot {"));
+ok("折线遵循 reduced-motion", /\.ust-rate-line, \.ust-rate-dot \{ transition: none; \}/.test(c));
+ok("趋势控件样式已定义", c.includes(".ust-trendCtrl {") && c.includes(".ust-trendSeg {"));
+
+section("客户端：费用两位小数与折线细化");
+// 需求 1：两个页面费用保留两位小数、四舍五入
+ok("费用两位小数四舍五入", c.includes("minimumFractionDigits: 2, maximumFractionDigits: 2"));
+ok("费用负数符号在前", c.includes('(v < 0 ? "-¥" : "¥")'));
+// 需求 2：费用列移到命中率后面（4 张表 + 圆环列表）
+ok("表头费用紧跟命中率", !/"费用"[\s\S]{0,120}?"命中率"/.test(c));
+ok("会话表列序：命中率 → 费用 → 占比",
+  /"命中率"[\s\S]{0,200}?"费用"[\s\S]{0,200}?"占比"/.test(c));
+// 需求 3：折线改实线
+ok("命中率折线为实线", !c.includes("stroke-dasharray: 4 3"));
+ok("折线为绿色（独立 --rate 变量）", /\.ust-rate-line \{[^}]*stroke: var\(--rate\)/.test(c));
+ok("--rate 双主题各定义一次", (c.match(/--rate: #/g) || []).length === 2);
+// 需求 4：加图例说明
+ok("图例含命中率条目", c.includes('"ust-legend-item ust-legend-item--rate"'));
+ok("图例用线形标识", c.includes('className: "ust-legend-line"'));
+ok("图例标识与折线同色", /\.ust-legend-line \{[^}]*border-top: 2px solid var\(--rate\)/.test(c));
+// 需求 5：费用模式不展示折线
+ok("费用模式隐藏折线", c.includes('metric === "cost" || isHour) return null'));
+ok("费用模式隐藏图例条目", c.includes('!isLine && metric !== "cost" && !isHour'));
+ok("费用模式与小时图不提供开关", !c.includes("ust-trendToggle"));
+// 需求 6：小时趋势删除命中率
+ok("小时趋势不画折线", c.includes("|| isHour) return null"));
+ok("小时趋势不画折线", c.includes('metric === "cost" || isHour) return null'));
+ok("小时趋势无命中率图例", c.includes("metric !== \"cost\" && !isHour"));
 ok("旧 schemaVersion 缓存不采用", h.includes("j.schemaVersion === CACHE_SCHEMA_VERSION"));
 
 section("客户端：日期范围过滤（Token用量统计以下）");
@@ -166,12 +324,12 @@ ok("弹窗主体同样上内边距归零", c.includes(".ust-panelBody{flex:1 1 a
 
 section("客户端：命中口径");
 ok("命中率按满量计算", c.includes("function hitRateOf(m)") && c.includes("(m.input || 0) + (m.output || 0) + (m.cacheRead || 0) + (m.cacheWrite || 0)"));
-ok("分母为 0 显示占位符", c.includes('return r === null || r === undefined ? "—"'));
+ok("分母为 0 显示占位符", c.includes('if (r === null || r === undefined || !isFinite(r)) return "—";') && c.includes("if (w <= 0) return \"—\";"));
 ok("汇总卡新增缓存命中", c.includes('label: "缓存命中"'));
 ok("汇总卡新增命中率", c.includes('label: "命中率"'));
 ok("窗口命中率按当期满量折算", c.includes("rate: winAgg.total > 0 ? winAgg.cacheRead / winAgg.total : null"));
 ok("会话表新增缓存命中列", c.includes('element("th", { className: "ust-tblNum" }, "缓存命中")'));
-ok("会话表新增命中率列", c.includes('element("th", { className: "ust-tblNum" }, "命中率")'));
+ok("会话表新增命中率列", /element\("th", \{ className: "ust-tblNum(?: ust-tblPct)?" \}, "命中率"\)/.test(c));
 ok("会话行输出命中与命中率", c.includes("fmtLarge(r.cacheRead)") && c.includes("fmtPct(hitRateOf(r))"));
 ok("供应商表含命中率列", /"供应商"[\s\S]{0,600}?"命中率"/.test(c));
 ok("会话窗口聚合累计四件套", c.includes("cur.cacheRead += s.cacheRead || 0;"));
@@ -180,8 +338,10 @@ section("客户端：图表改版（柱状图 + 折线双形态）");
 ok("柱状与折线形态并存", c.includes('className: cF(s.rank) + " ust-bar"') && c.includes('className: cF(s.rank) + " ust-line"'));
 ok("原折线路径已移除", !c.includes('cS(s.rank) + " ust-hair"'));
 ok("命中率折线图已删除", !c.includes("ust-hr-line") && !c.includes('"aria-label": "各模型缓存命中率折线图"'));
-ok("命中率折线相关样式已清理", !c.includes(".ust-hr-line") && !c.includes(".ust-hr-dot") && !c.includes(".ust-legend-line"));
-ok("柱状图副标题", c.includes("一根柱 = 一个模型，柱高 = 当期用量"));
+// 历史断言：旧的「命中率折线图」整体移除时，其专属样式必须清干净。
+// 注意 .ust-legend-line 现已用于「命中率」图例条目（新功能），故只查旧的两项。
+ok("旧命中率折线图样式已清理", !c.includes(".ust-hr-line") && !c.includes(".ust-hr-dot"));
+ok("柱状图副标题（总量口径）", c.includes("一根柱 = 一个模型，柱高 = 当期总量"));
 ok("单图单滚动容器", c.includes('className: "ust-plot" + (needScroll ? " is-scroll" : "")'));
 
 section("客户端：模型明细色点可见性");
@@ -208,7 +368,7 @@ ok("会话逐模型四件套", c.includes("bm.cacheRead += m.cacheRead || 0"));
 ok("弹窗输出模型命中率", c.includes("fmtPct(hitRateOf(m))"));
 
 section("客户端：柱顶数值标签");
-ok("每根柱输出数值", c.includes('className: "ust-bar-val"') && c.includes('fmtLarge(v.total)'));
+ok("每根柱输出数值（按指标格式化）", c.includes('className: "ust-bar-val"') && c.includes("fmtVal(v.total)"));
 // 回归：刻度曾直接用原始峰值（9455万），标签落在零碎数值上。
 // 现在按峰值量级向上取整到整档（94,550,000 → 95,000,000，即 9500万）。
 ok("刻度按峰值向上取整", c.includes("const rawPeak = Math.max(1, ...visTotals);") && c.includes("const stepU = mag / 10;") && c.includes("const up = Math.ceil(rawPeak / stepU) * stepU;"));
@@ -259,7 +419,7 @@ ok("三栏吃满轨道不再限宽", !c.includes(".ust-top-col { min-width: 0; m
 // X 轴首刻度挤在一起。热力图 HeatTrend 的 Y 轴确实需要 0/峰值两极，故限定函数体。
 {
   // Trend 签名含可选参数（会话页传 title / onPick / pickKey），按正则匹配以兼容各种形态
-  const trendStart = c.search(/function Trend\(\{ days, window: wnd(, title)?, variant = "bar", showRangeLabel = true, onPick, pickKey \}\) \{/);
+  const trendStart = c.search(/function Trend\(\{ days, window: wnd(, title)?, variant = "bar", showRangeLabel = true, onPick, pickKey(, ranks = null)? \}\) \{/);
   const trendEnd = trendStart >= 0 ? c.indexOf("\n\t\tfunction ", trendStart + 10) : -1;
   const trendBody = trendStart >= 0 && trendEnd > trendStart ? c.slice(trendStart, trendEnd) : "";
   ok("柱状图不再标多余的 0", trendBody.length > 0 && !trendBody.includes('textAnchor: "end" }, "0")'));
@@ -307,9 +467,9 @@ section("客户端：表头与数据列严格对应");
   // 会话表：数值列中前两格是轮次/消息（String），之后依次是 输入/输出/缓存命中/总量/命中率
   const sessIdx = c.indexOf('element("th", null, "会话")');
   const sessPart = c.slice(sessIdx, sessIdx + 4000);
-  const sessTh = [...sessPart.matchAll(/element\("th", \{ className: "ust-tblNum" \}, "([^"]+)"\)/g)].map((m) => m[1]);
-  const sessTd = [...sessPart.matchAll(/element\("td", \{ className: "ust-tblNum" \}, (fmtLarge\(r\.\w+\)|fmtPct\(hitRateOf\(r\)\))/g)].map((m) => m[1]);
-  ok("会话表表头数值列齐全", JSON.stringify(sessTh) === JSON.stringify(["轮次", "消息", "时长", "输入", "输出", "缓存命中", "总量", "命中率", "占比"]));
+  const sessTh = [...sessPart.matchAll(/element\("th", \{ className: "ust-tblNum(?: ust-tblPct)?" \}, "([^"]+)"\)/g)].map((m) => m[1]);
+  const sessTd = [...sessPart.matchAll(/element\("td", \{ className: "ust-tblNum(?: ust-tblPct)?" \}, (fmtLarge\(r\.\w+\)|fmtPct\(hitRateOf\(r\)\))/g)].map((m) => m[1]);
+  ok("会话表表头数值列齐全", JSON.stringify(sessTh) === JSON.stringify(["轮次", "消息", "时长", "输入", "输出", "缓存命中", "总量", "命中率", "费用", "占比"]));
   // 数据行前面还有「会话名 + 轮次 + 消息」3 格，故 fmtLarge 系列从第 4 个数值格起、与表头第 3~7 项对应
   ok("会话表缓存命中列对齐", sessTh[5] === "缓存命中" && sessTd[2] === "fmtLarge(r.cacheRead)");
   ok("会话表总量列对齐", sessTh[6] === "总量" && sessTd[3] === "fmtLarge(r.total)");
@@ -319,11 +479,12 @@ section("客户端：表头与数据列严格对应");
 section("客户端：用量列统一口径与次序");
 // 统一为 输入 / 输出 / 缓存命中 / 总量 / 命中率 / 占比（会话表在「消息」之后，供应商/弹窗在名称列之后）
 const order = ["输入", "输出", "缓存命中", "总量", "命中率", "占比"];
-const orderRe = new RegExp(order.map((x) => '"' + x + '"').join('[\\s\\S]{0,120}?'));
+// 窗口 200：圆环列表的「占比」已换成「费用」，表内的 命中率→占比 间距略增
+const orderRe = new RegExp(order.map((x) => '"' + x + '"').join('[\\s\\S]{0,200}?'));
 ok("会话表列序统一", /"轮次"[\s\S]{0,400}?"消息"[\s\S]{0,900}?"输入"[\s\S]{0,900}?"输出"[\s\S]{0,900}?"缓存命中"[\s\S]{0,900}?"总量"[\s\S]{0,900}?"命中率"[\s\S]{0,900}?"占比"/.test(c));
 ok("供应商表列序统一", /"供应商"[\s\S]{0,900}?"输入"[\s\S]{0,900}?"输出"[\s\S]{0,900}?"缓存命中"[\s\S]{0,900}?"总量"[\s\S]{0,900}?"命中率"[\s\S]{0,900}?"占比"/.test(c));
 ok("明细弹窗列序统一", /"模型"[\s\S]{0,900}?"输入"[\s\S]{0,900}?"输出"[\s\S]{0,900}?"缓存命中"[\s\S]{0,900}?"总量"[\s\S]{0,900}?"命中率"[\s\S]{0,900}?"占比"/.test(c));
-ok("六列次序整体成立", orderRe.test(c));
+ok("用量列次序整体成立", orderRe.test(c));
 ok("会话表补充输入输出列", c.includes("fmtLarge(r.input)") && c.includes("fmtLarge(r.output)"));
 ok("弹窗摘要标签为总量", c.includes('{ label: "总量", value: fmtLarge(detail.total) }') && !c.includes('{ label: "Token", value: fmtLarge(detail.total) }'));
 ok("圆环列表补齐六列", c.includes('className: "ust-model-in"') && c.includes('className: "ust-model-out"') && c.includes("ust-model-in, .ust-model-out, .ust-model-hit"));
@@ -345,7 +506,7 @@ ok("图例水平居中", c.includes("justify-content: center; }") && c.includes(
 ok("模型列表数值列右对齐", c.includes(".ust-model-in, .ust-model-out, .ust-model-hit, .ust-model-sub, .ust-model-rate, .ust-model-val { text-align: right; }"));
 ok("命中量列定宽", c.includes(".ust-model-hit { width: 76px; }"));
 ok("总量列定宽", c.includes(".ust-model-sub { width: 72px; }"));
-ok("占比列定宽", c.includes(".ust-model-val { width: 40px; }"));
+ok("占比列定宽（放宽至容纳 100.00%）", c.includes(".ust-model-val { width: 62px; }"));
 ok("命中率列定宽", c.includes(".ust-model-rate {") && c.includes("width: 42px"));
 
 section("客户端：热力图色阶只留色块");
@@ -372,7 +533,7 @@ ok("缓存命中第二行为 TOKENS", c.includes('label: "缓存命中", value: 
 ok("宿主按天下发洞察计数", h.includes("day.insights") && h.includes("bumpDay"));
 ok("洞察随窗口合并", c.includes("function insightsIn(days, wnd, all)") && c.includes("const winInsights = insightsIn(days, wnd, data.insights)"));
 ok("洞察挂载用 winInsights", c.includes("element(Insights, { insights: winInsights") && c.includes("element(TopBoards, { insights: winInsights })"));
-ok("宿主 schema 升至 9", h.includes("const CACHE_SCHEMA_VERSION = 9"));
+ok("宿主 schema 升至 10（含费用）", h.includes("const CACHE_SCHEMA_VERSION = 10"));
 // 回归：MCP 工具（mcp__<server>__<tool>）曾因「非核心工具即插件」的判据
 // 同时进插件榜与 MCP 榜，插件榜因此出现 mcp__siyuan__http_request 之类怪名。
 ok("MCP 工具不计入插件榜", h.includes("const asPlugin = !CORE_TOOLS.has(tn) && !srv;") && !h.includes("const isPlugin = !CORE_TOOLS.has(tn);"));
@@ -390,8 +551,8 @@ ok("徽标统一浅灰块面", c.includes(".ust-provLogo {") && c.includes("back
 ok("tip Token 用万/亿量级", c.includes('tipRow("Token 用量", fmtLarge(c0.total) + " tokens")') && c.includes('tipRow(view === "cum" ? "累计 Token" : "Token 用量", fmtLarge(x.sum) + " tokens")'));
 // 回归：柱状图/圆环 tip 曾输出裸千分位（63,701,235），且与万/亿量级重复显示，不够友好。
 // 现在所有「数量」类 tip 一律走 fmtLarge，不再出现 fmtFull。
-ok("柱状图 tip 合计为量级", c.includes('"合计 " + fmtLarge(visTotals[i]) + " tokens"'));
-ok("柱状图 tip 各模型为量级", c.includes('fmtLarge(values[i].vals[k])'));
+ok("柱状图 tip 合计按指标格式化", c.includes('"合计 " + fmtVal(visTotals[i]) + " " + unitOf'));
+ok("柱状图 tip 各模型按指标格式化", c.includes("fmtVal(values[i].vals[k])"));
 ok("圆环 tip 合计为量级", c.includes('"合计 " + fmtLarge(s.total) + " tokens · 占比 "'));
 ok("圆环 tip 命中为量级", c.includes('"缓存命中 " + fmtLarge(s.cacheRead || 0)'));
 ok("tip 内不使用裸千分位", !/fmtFull\((visTotals|values\[i\]|s\.total|s\.cacheRead)/.test(c));
@@ -426,7 +587,7 @@ ok("指标卡并入单组", c.includes('element("div", { className: "ust-metrics
   // 顺序断言：Token → 缓存命中 → 命中率 → 最常用模型 → 轮次 → 消息 → 活跃时长 → 活跃天数
   const start = c.indexOf("function SessionUsageView");
   // 窗口取到 TOP5 之后：顺序卡在骨架分支之后，距函数头约 8600–9700，Trend/Donut/TOP5 到 11k 左右
-  const body = start >= 0 ? c.slice(start, start + 12000) : "";
+  const body = start >= 0 ? c.slice(start, start + 14000) : "";
   const order = ["Token 用量", "缓存命中", "命中率", "最常用模型", "轮次", "消息", "活跃时长", "活跃天数"];
   const idx = order.map((k) => body.indexOf('label: "' + k + '"'));
   ok("概览卡顺序与主面板一致", idx.every((v, i) => v >= 0 && (i === 0 || v > idx[i - 1])));
@@ -551,7 +712,7 @@ ok("小时桶入账 usage", h.includes("const hb = ensureSessHour(hh);") && h.in
 ok("小时桶累计轮次", h.includes("ensureSessHour(sh).turns += 1"));
 ok("小时桶累计消息", (h.match(/ensureSessHour\(sh\)\.messages \+= 1;/g) || []).length === 2);
 ok("会话行下发 hours", h.includes("hours: [...sessHours.entries()]"));
-ok("缓存 schema 升至 8", h.includes("const CACHE_SCHEMA_VERSION = 9"));
+ok("缓存 schema 升至 9", h.includes("const CACHE_SCHEMA_VERSION = 10"));
 
 section("宿主侧：会话级洞察");
 ok("会话累计工具计数", h.includes("const sessToolCounts = new Map()"));
@@ -563,7 +724,7 @@ section("宿主侧：会话 × 天 × 小时桶");
 ok("天小时桶已声明", h.includes("hours: new Map()") && h.includes("const ensureSessDayHour"));
 ok("天小时桶入账 usage", h.includes("const sh = ensureSessDayHour(ss, hour);") && h.includes("addMetrics(sh.metrics, usage)"));
 ok("会话行下发 dayHours", h.includes("dayHours: [...days.entries()]"));
-ok("缓存 schema 升至 9", h.includes("const CACHE_SCHEMA_VERSION = 9"));
+ok("缓存 schema 升至 9（历史段）", h.includes("const CACHE_SCHEMA_VERSION = 10"));
 
 section("客户端：日期趋势联动与页脚吸附");
 ok("新增日期用量趋势", c.includes('title: "日期用量趋势"'));
@@ -572,7 +733,7 @@ ok("日期趋势传选中态", c.includes("pickKey: effectivePick"));
 ok("小时趋势跟随选中日", c.includes("const activeDate = pickedDay ? pickedDay.date : autoPick;"));
 ok("点选后取该天小时桶", c.includes("const pickedDay = dayHours.find((d) => d.date === effectivePick) || null;"));
 ok("未点选取跨天合并口径", c.includes("(Array.isArray(meta && meta.hours) ? meta.hours : [])"));
-ok("Trend 支持变体与点选回调", c.includes('function Trend({ days, window: wnd, title, variant = "bar", showRangeLabel = true, onPick, pickKey })'));
+ok("Trend 支持变体与点选回调", /function Trend\(\{ days, window: wnd, title, variant = "bar", showRangeLabel = true, onPick, pickKey(, ranks = null)? \}\)/.test(c));
 ok("柱体与折线点均带选中态", c.includes('className: cF(s.rank) + " ust-bar" + (isPicked ? " is-picked" : "")') && c.includes('className: "ust-pick-ring"'));
 ok("选中态样式已定义", c.includes(".ust-bar.is-picked {") && c.includes(".ust-hitband.is-picked {"));
 ok("页脚始终贴合底部", /\.ust-sessview-foot \{[^}]*margin: auto -32px 0;/.test(c) && /\.ust-sessview \{[^}]*min-height: 100%;/.test(c));
@@ -628,6 +789,16 @@ function spawnSyncNode(args) {
 
 // ── 3. 浏览器端到端（需 DSH 在跑） ──────────────────────────────
 const STATIC_ONLY = process.argv.includes("--static");
+// 计价单元测试：不依赖 DSH 运行，静态段也跑（--static 时更有价值）
+section("计价单元测试");
+{
+  const costRun = spawnSyncNode(["tests/cost-unit.mjs"]);
+  const costOut = (costRun.stdout || "") + (costRun.stderr || "");
+  ok("cost-unit.mjs 全通过", costRun.status === 0, costRun.status === 0 ? "" : costOut.slice(-500));
+  ok("计价含别名归一断言", costOut.includes("归一 deepseek-v4.1-flash"));
+  ok("计价含无价边界断言", costOut.includes("全无价型号"));
+}
+
 if (!STATIC_ONLY) {
   section("浏览器端到端");
   try {

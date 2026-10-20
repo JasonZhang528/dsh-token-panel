@@ -1,6 +1,6 @@
 {
   "name": "dsh-token-panel",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "DSH 侧边栏 Token 用量统计：原生菜单 + 主区域页面，含用量趋势、模型刻度环、GitHub 风格活跃热力图、会话与供应商统计（分页）、自动刷新，支持深浅双主题。",
   "type": "module",
   "main": "./lib/index.mjs",
@@ -21,7 +21,7 @@
     "README.en.md"
   ],
   "scripts": {
-    "test": "node tests/run-acceptance.mjs"
+    "test": "node tests/cost-unit.mjs && node tests/run-acceptance.mjs"
   },
   "keywords": [
     "dsh",
