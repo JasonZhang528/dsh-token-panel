@@ -121,7 +121,7 @@ ok("按天输出会话明细", h.includes("const sessions = [...(d.bySession || 
 ok("按天输出供应商明细", h.includes("const providers = [...(d.byProvider || new Map()).entries()]"));
 ok("按天输出消息数", h.includes("messages: d.messages"));
 ok("会话名取自 session/title 事件", h.includes('case "session/title":') && h.includes("sessionTitle = ev.data.title.trim()"));
-ok("缓存带 schemaVersion", h.includes("const CACHE_SCHEMA_VERSION = 10") && h.includes("schemaVersion: CACHE_SCHEMA_VERSION"));
+ok("缓存带 schemaVersion", h.includes("const CACHE_SCHEMA_VERSION = 11") && h.includes("schemaVersion: CACHE_SCHEMA_VERSION"));
 section("宿主侧：token 费用计价（CNY）");
 // 价格源：宿主维护的 prices-auto.json（300+ 型号，USD/CNY 混排）+ 插件补充价目。
 // 铁律：表里没有的型号绝不猜价，一律进 unpriced 清单，不进总额。
@@ -135,7 +135,7 @@ ok("缺 cacheWrite 单价回退 input 价", h.includes('cacheWrite: typeof v.cac
 ok("无价返回 null 不返回 0", h.includes("function costOf(metrics, price) {") && h.includes("if (!price) return null;"));
 ok("价格表加载失败时退回补充价目", h.includes("priceTable = buildPriceTable(null, PRICE_SUPPLEMENT);"));
 ok("扫描前确保价格表就绪", h.includes("if (!priceTable) await loadPriceTable();"));
-ok("缓存 schema 升至 10（含费用）", h.includes("const CACHE_SCHEMA_VERSION = 10;"));
+ok("缓存 schema 升至 11（含费用与会话洞察）", h.includes("const CACHE_SCHEMA_VERSION = 11;"));
 ok("响应带 pricing 元数据", h.includes("pricing: {") && h.includes('currency: "CNY"'));
 ok("响应带无价型号清单", h.includes("unpriced: [...unpriced],"));
 // 别名归一：宿主表用 deepseek-flash 键收录显示名为 "DeepSeek V4.1 Flash" 的型号
@@ -156,6 +156,14 @@ ok("负数金额符号在前", c.includes('(v < 0 ? "-¥" : "¥")'));
 ok("费用图标存在", c.includes("const IconCoin = () => icon(["));
 ok("主面板有累计费用卡", c.includes('label: "累计费用"'));
 ok("主面板有窗口费用卡", c.includes('label: "窗口费用"'));
+// 需求：窗口费用放到命中率后面。
+// 卡序语义：先看用了多少 token 与命中率（效率），再看花了多少钱（成本）。
+ok("窗口费用排在命中率之后", (() => {
+  const i = c.indexOf('label: "命中率", value: fmtPct(winStats.rate)');
+  const j = c.indexOf('label: "窗口费用"');
+  const k = c.indexOf('label: "最常用模型"');
+  return i > 0 && j > i && k > j;
+})());
 ok("会话页有费用卡", c.includes('label: "Token 费用"'));
 ok("无价显示未定价而非 0 元", (c.match(/: "未定价"/g) || []).length >= 4);
 ok("四张表 + 圆环列表都有费用列", (c.match(/\}, "费用"\)/g) || []).length === 5);
@@ -206,13 +214,32 @@ section("客户端：两页图例颜色一致");
 // 需求：会话「用量」tab 参照「用量统计」页，两处图例颜色保持一致。
 // 机制：全局色序 —— 按全量 days 算模型色序号，两页共用同一份，
 // 因此同一模型在两页拿到同一颜色（原先各按自己的窗口排序，色号不同）。
-ok("foldModels 支持外部色序", c.includes("function foldModels(list, n = 4, ranks = null)") && c.includes("ranks.has(m.model) ? ranks.get(m.model) : i"));
-ok("Trend 接受 ranks", c.includes("pickKey, ranks = null })"));
+ok("foldModels 支持外部色序与顺序", c.includes("function foldModels(list, n = 4, ranks = null, seriesOrder = null)") && c.includes("ranks.has(m.model) ? ranks.get(m.model) : i"));
+ok("Trend 接受 ranks / metric / 切换器 / 日期前缀 / 图例顺序", c.includes("pickKey, ranks = null, metric: metricProp, onMetricChange, showMetricSwitch = true, datePrefix, seriesOrder = null })"));
 ok("Donut 接受 ranks", c.includes("function Donut({ days, window: wnd, ranks = null })"));
 ok("fillDays 支持全量（wnd 为 null）", c.includes("if (!wnd) return [...map.values()];"));
 ok("modelRanksIn 支持全量", c.includes("modelTotalsIn(days, wnd || null)"));
 ok("两页都按全量算色序", (c.match(/modelRanksIn\(days, null\)/g) || []).length >= 2);
 ok("会话页用 globalRanks 传给图表", (c.match(/ranks: globalRanks/g) || []).length >= 3);
+
+section("客户端：SessionUsageView hook 顺序（React #310 防回归）");
+// 历史事故：骨架屏、metric、globalRanks 等 hook 曾被放在
+// 「if (loading && !data) return」与「if (!sessionId) return」之后。
+// loading 由 true 转 false、sessionId 由有变无时，两次渲染的 hook 数量不一致，
+// React 抛 #310（Rendered more hooks than during the previous render），
+// 被 slot 错误边界吞成 <div data-slot-error>——表现为「用量」tab 点了没反应。
+// 规则：条件 return 之前不得再有 hook。
+{
+  const i = c.indexOf("function SessionUsageView");
+  const seg = c.slice(i, i + 20000);
+  const hooks = [...seg.matchAll(/react\.use(?:State|Memo|Callback|Effect|Ref)\(/g)].map((m) => i + m.index);
+  const maxHook = Math.max(...hooks);
+  const loadingRet = c.indexOf("if (loading && !data) {", i);
+  const sidRet = c.indexOf("if (!sessionId) return element", i);
+  ok("所有 hook 在两个条件 return 之前", maxHook < loadingRet && maxHook < sidRet, "maxHook=" + maxHook + " loadingRet=" + loadingRet + " sidRet=" + sidRet);
+  ok("days 声明在 globalRanks 之前（避免 TDZ）", c.indexOf("const days = (data && data.days) || [];", i) < c.indexOf("const globalRanks = react.useMemo", i));
+  ok("metric state 在所有 return 之前", c.indexOf('const [metric, setMetric] = react.useState("token");', i) < loadingRet);
+}
 ok("主面板图表传 ranks", (c.match(/ranks: ranks/g) || []).length >= 2);
 // 回归：外部色序下「其他 N 个模型」桶若沿用固定序号，会与真实模型撞色
 ok("其他桶序号避开已占用色槽", c.includes("let otherRank = n;") && c.includes("while (used.has(otherRank)) otherRank++;"));
@@ -222,19 +249,107 @@ ok("色序不随时间范围变化", c.includes("modelRanksIn(days, null)"));
 section("客户端：图例聚焦选择与删除命中率勾选");
 // 需求：日期用量趋势图按图例选中来展示对应数据（聚焦），
 // 删除命中率勾选（折线常显），两个页面都改（两页共用 Trend 组件，一处改动即全覆盖）。
-ok("图例为聚焦选择", c.includes("const focus = hidden.focus || null;") && c.includes("visible = series.map((s) => (focus ? s.model === focus : true))"));
-ok("点击图例切换聚焦", c.includes("h.focus === s.model ? null : s.model"));
-ok("聚焦项有视觉标记", c.includes('" is-focus"') && c.includes('" is-dim"'));
-ok("聚焦态可访问（aria-pressed）", c.includes('"aria-pressed": isFocus'));
-ok("聚焦样式已定义", c.includes(".ust-legend-item.is-focus {"));
+// 需求：图例点击 = 显示/隐藏对应数据（显隐切换），不是聚焦单选。
+ok("图例为显隐切换", c.includes("const off = (name) => !!hidden[name];") && c.includes("const visible = series.map((s) => !off(s.model));"));
+ok("点击图例切换显隐", c.includes("[s.model]: !h[s.model]"));
+ok("隐藏项有视觉标记", c.includes('" is-off"'));
+ok("显隐态可访问（aria-pressed）", c.includes('"aria-pressed": !isOff'));
+ok("显隐样式已定义", c.includes(".ust-legend-item.is-off {"));
 // 回归：旧的「显隐切换」需彻底移除
-ok("不再有逐模型显隐切换", !c.includes("[s.model]: !h[s.model]"));
+ok("聚焦逻辑已彻底移除", !c.includes("is-focus") && !c.includes("const focus = hidden.focus"));
+
+section("客户端：趋势图类型联动与图例显隐");
+// 需求1：小时用量趋势与每日用量趋势类型保持一致，不可单独选择。
+// 实现：metric 提升为页面级状态，两块 Trend 共用一份；切换器只挂在日趋势上。
+ok("Trend metric 受控 / 非受控兼容", c.includes("const metric = metricProp !== undefined ? metricProp : metricInner;") && c.includes("const setMetric = onMetricChange || setMetricInner;"));
+ok("主面板两块趋势共用 metric", /const \[metric, setMetric\] = react\.useState\("token"\);[\s\S]{0,200}const ranks = react\.useMemo/.test(c));
+// 顺序：metric 在最前（所有 hooks 之前），days / globalRanks 随后
+ok("会话页两块趋势共用 metric", /function SessionUsageView[\s\S]{0,3000}const \[metric, setMetric\] = react\.useState\("token"\);[\s\S]{0,3000}const days = \(data && data\.days\)[\s\S]{0,300}const globalRanks/.test(c));
+
+section("客户端：日期前缀 / 命中率开关 / 图例顺序 / 日期过滤");
+// 需求1：日期用量趋势标题删除日期前缀（只删会话 tab）
+ok("Trend 支持 datePrefix prop", c.includes("datePrefix,") || c.includes("datePrefix }") || c.includes("datePrefix,"));
+ok("Trend 标题用 datePrefix（span 结构）", c.includes('datePrefix') && c.includes('className: "ust-h2-date" }, datePrefix'));
+ok("会话页日期趋势 datePrefix 为空", c.includes('title: "日期用量趋势", datePrefix: "",'));
+// 需求6：单日期时小时趋势删日期前缀
+ok("小时趋势 datePrefix 按日期数条件", c.includes("activeDates.length > 1 ? (effectivePick ? fmtDayLabel(effectivePick") || c.includes("activeDates.length > 1 ? (effectivePick"));
+// 需求2：命中率图例可切换
+ok("showRate state 默认 true", c.includes("react.useState(true)") && c.includes("setShowRate"));
+ok("命中率图例项可点击", c.includes("onClick: () => setShowRate((v) => !v)"));
+ok("命中率图例有 is-off 视觉态", c.includes('showRate ? "" : " is-off"'));
+ok("折线条件含 showRate", c.includes("if (!showRate || isLine || metric === \"cost\" || isHour) return null;"));
+// 需求3：折线拐点圆点
+ok("折线拐点有圆点", c.includes("rd") && c.includes("ust-rate-dot") && c.includes("sg.map((p, pi) => element(\"circle\""));
+// 需求4：小时趋势图例顺序 = 日期趋势图例顺序
+ok("foldModels 支持 seriesOrder", c.includes("function foldModels(list, n = 4, ranks = null, seriesOrder = null)"));
+ok("seriesOrder 优先排序", c.includes("const sorted = seriesOrder"));
+ok("会话页 seriesOrder 传入小时趋势", c.includes("seriesOrder: dailySeriesOrder"));
+ok("主面板 seriesOrder 传入小时趋势", c.includes("seriesOrder: dailySeriesOrder,") || c.includes("seriesOrder: dailySeriesOrder)"));
+// 需求5：模型用量 + 最常用按选中日期过滤
+// 需求变更：「最常用」恢复全历史口径，不再按日期过滤
+ok("TopBoards 不再按日期过滤", !c.includes("pickedInsights"));
+ok("TopBoards 用会话级 sessInsights", c.includes("sessInsights ? element(TopBoards, { insights: sessInsights })"));
+// 需求修复：最常用原先未按日期过滤 —— 根因是宿主把「会话×天洞察」存在独立 Map，
+// 从未写回 ss.insights，前端读到的永远是 null。
+ok("宿主下发 session.dayInsights", h.includes("dayInsights: [...sessDayInsights.entries()]"));
+// 需求修复：费用模式下小时趋势无数据 —— 根因是宿主下发的会话小时桶
+// （meta.hours / dayHours[].hours）的 byModel 不含 cost，前端 fieldOf 取不到值 → 柱高全 0。
+ok("宿主 table_get helper（含别名归一）", h.includes("function table_get(table, model)") && h.includes("table.get(normalizeModelKey(model, PRICE_SUPPLEMENT))"));
+ok("宿主会话小时桶下发 cost", h.includes("cost: priceTable ? costOf(m, table_get(priceTable, model)) || 0 : 0"));
+ok("两处小时桶都带 cost", (h.match(/cost: priceTable \? costOf\(m, table_get\(priceTable, model\)\) \|\| 0 : 0/g) || []).length >= 2);
+// 前端链路：hourBuckets 的 byModel 带 cost → hourByModel 累加 → hourDay.byModel → Trend.fieldOf
+ok("前端 hourByModel 累加 cost", /if \(typeof m\.cost === "number"\) bm\.cost = \(bm\.cost \|\| 0\) \+ m\.cost;/.test(c));
+ok("Trend fieldOf 取 cost", c.includes('metric === "cost" ? (typeof x.cost === "number" ? x.cost : 0)'));
+ok("宿主 sessDayInsights 累计", h.includes("const sessDayInsights = new Map();"));
+// 宿主仍下发 dayInsights（数据保留，前端不再消费）
+ok("宿主仍下发 dayInsights", h.includes("dayInsights: [...sessDayInsights.entries()]"));
+ok("前端不再读 dayInsights", !c.includes("meta.dayInsights"));
+
+section("客户端：折线 tooltip 与右轴");
+// 需求修复：折线图无 tooltip 信息 —— 把命中率并入柱图 tooltip
+ok("tooltip 含命中率行", c.includes('element("span", null, "命中率")') && c.includes("pctRatio(rateSeries[i])"));
+ok("tooltip 命中率带线形标识", c.includes('className: "ust-tip-line"'));
+ok("tooltip 命中率仅在可画折线时出现", c.includes('showRate && !isLine && metric !== "cost" && !isHour && rateSeries[i] !== null'));
+ok("tooltip 线形标识样式已定义", c.includes(".ust-tip-line {") && c.includes("border-top: 2px solid var(--rate)"));
+// 需求修复：右轴被遮盖 —— PAD_R 按是否画右轴加宽
+ok("右轴留出足够边距", c.includes("const HAS_RATE_AXIS = !isLine && metric !== \"cost\" && !isHour;") && c.includes("PAD_R = HAS_RATE_AXIS ? 34"));
+ok("右轴刻度贴内侧绘制", c.includes("x: W - PAD_R + 6, y: yOf(r) + 3"));
+ok("Donut 按选中日期过滤", c.includes('window: effectivePick ? { id: "day", dateKeys: [effectivePick] } : wnd'));
+// 宿主：schema 11 + 会话×天洞察
+ok("宿主 schema 升至 11", h.includes("const CACHE_SCHEMA_VERSION = 11;"));
+ok("宿主 session-day insights 初始化", h.includes("insights: null };"));
+ok("宿主 buildCache 下发 session insights", h.includes("insights: ss.insights ? {"));
+ok("宿主 ensureSessDayInsights helper", h.includes("ensureSessDayInsights"));
+// 回归：所有 hooks 在条件 return 之前
+ok("会话页所有 hooks 在 loading-if 之前", (() => {
+  const i = c.indexOf("function SessionUsageView");
+  const seg = c.slice(i, i + 20000);
+  const hooks = [...seg.matchAll(/react\.use(?:State|Memo|Callback|Effect|Ref)\(/g)].map(m => i + m.index);
+  const maxHook = Math.max(...hooks);
+  const loadingRet = c.indexOf("if (loading && !data) {", i);
+  const sidRet = c.indexOf("if (!sessionId) return element", i);
+  return maxHook < loadingRet && maxHook < sidRet;
+})());
+ok("日趋势传 metric 与切换回调", (c.match(/metric: metric, onMetricChange: setMetric/g) || []).length >= 2);
+ok("小时趋势跟随且隐藏切换器", (c.match(/metric: metric, showMetricSwitch: false/g) || []).length >= 2);
+ok("切换器可被隐藏", c.includes("showMetricSwitch\r\n\t\t\t\t? element(\"div\", { className: \"ust-trendCtrl\" }") || c.includes("showMetricSwitch"));
+ok("切换器条件渲染（false 时不出现）", /showMetricSwitch[\s\S]{0,120}: null,/.test(c));
+// 需求2/3：图例点击 = 显隐切换，两个页面（含会话页小时趋势）同样逻辑
+// ——两页共用 Trend 组件，图例逻辑在组件内改一次即全覆盖。
+ok("图例显隐切换（可多选不互斥）", c.includes("const off = (name) => !!hidden[name];"));
+ok("点击切换对应柱段显隐", c.includes("onClick: () => setHidden((h) => ({ ...h, [s.model]: !h[s.model] }))"));
+ok("隐藏项淡出 0.4", c.includes("style: { opacity: isOff ? 0.4 : 1 }"));
+ok("隐藏项 title 提示可恢复", c.includes('title: isOff ? "点击显示 " + s.model : "点击隐藏 " + s.model'));
+ok("tooltip 同步过滤隐藏项", c.includes("series.map((s, k) => visible[k]"));
+ok("显隐样式含 hover 回显", c.includes(".ust-legend-item.is-off:hover"));
+// 回归：聚焦逻辑必须彻底移除
+ok("聚焦逻辑无残留", !c.includes("is-focus") && !c.includes("hidden.focus"));
 // tooltip 跟随聚焦：只列聚焦的模型
 ok("tooltip 跟随聚焦过滤", c.includes("series.map((s, k) => visible[k]"));
 // 命中率勾选已删除，折线常显
-ok("已删除命中率勾选开关", !c.includes("ust-trendToggle") && !c.includes("setShowRate"));
-ok("无 showRate 状态残留", !c.includes("showRate"));
-ok("折线常显（仅费用/小时除外）", c.includes('if (isLine || metric === "cost" || isHour) return null;'));
+ok("命中率开关已从勾选改为图例点击", !c.includes("ust-trendToggle") && c.includes("setShowRate"));
+ok("showRate 状态已恢复（图例控制）", c.includes("const [showRate, setShowRate] = react.useState(true);"));
+ok("折线受 showRate 控制（费用/小时除外）", c.includes('if (!showRate || isLine || metric === "cost" || isHour) return null;'));
 ok("图例命中率条目随之常显", c.includes('!isLine && metric !== "cost" && !isHour'));
 ok("费用模式按 cost 取段值", c.includes("metric === \"cost\" ? (typeof x.cost === \"number\" ? x.cost : 0)"));
 ok("数值按指标格式化", c.includes("const fmtVal = (v) => (metric === \"cost\" ? fmtCost(v) : fmtLarge(v));"));
@@ -245,7 +360,7 @@ ok("tip 分项按指标格式化", c.includes("fmtVal(values[i].vals[k])"));
 ok("费用模式副标题说明口径", c.includes("柱高 = 当期费用（CNY）"));
 // 命中率折线
 // 需求：删除命中率勾选，折线常显（费用模式与小时趋势除外）
-ok("命中率折线常显（无勾选状态）", !c.includes("showRate"));
+ok("命中率折线默认显示", c.includes("const [showRate, setShowRate] = react.useState(true);"));
 ok("命中率逐期计算", c.includes("const rateSeries = react.useMemo"));
 ok("无用量期返回 null 不断到 0%", c.includes("return sum > 0 ? cr / sum : null;"));
 ok("折线渲染组件", c.includes("const rateLine = (() => {") && c.includes("ust-rate-line"));
@@ -419,10 +534,15 @@ ok("三栏吃满轨道不再限宽", !c.includes(".ust-top-col { min-width: 0; m
 // X 轴首刻度挤在一起。热力图 HeatTrend 的 Y 轴确实需要 0/峰值两极，故限定函数体。
 {
   // Trend 签名含可选参数（会话页传 title / onPick / pickKey），按正则匹配以兼容各种形态
-  const trendStart = c.search(/function Trend\(\{ days, window: wnd(, title)?, variant = "bar", showRangeLabel = true, onPick, pickKey(, ranks = null)? \}\) \{/);
+  const trendStart = c.search(/function Trend\(\{ days, window: wnd(, title)?, variant = "bar", onPick, pickKey(, ranks = null)?(, metric: metricProp, onMetricChange, showMetricSwitch = true)? \}\) \{/);
   const trendEnd = trendStart >= 0 ? c.indexOf("\n\t\tfunction ", trendStart + 10) : -1;
   const trendBody = trendStart >= 0 && trendEnd > trendStart ? c.slice(trendStart, trendEnd) : "";
-  ok("柱状图不再标多余的 0", trendBody.length > 0 && !trendBody.includes('textAnchor: "end" }, "0")'));
+  ok("柱状图不再标多余的 0", (() => {
+  const s = c.indexOf("function Trend(");
+  const e = c.indexOf("function Donut(", s);
+  const seg = s >= 0 ? c.slice(s, e > s ? e : s + 20000) : "";
+  return seg.length > 0 && !seg.includes('textAnchor: "end" }, "0")');
+})());
 }
 ok("色阶移到底部", c.includes("ust-gh-scale ust-gh-scale--foot"));
 ok("年度概况已删除", !c.includes("ust-gh-stats") && !c.includes("近一年合计"));
@@ -533,7 +653,7 @@ ok("缓存命中第二行为 TOKENS", c.includes('label: "缓存命中", value: 
 ok("宿主按天下发洞察计数", h.includes("day.insights") && h.includes("bumpDay"));
 ok("洞察随窗口合并", c.includes("function insightsIn(days, wnd, all)") && c.includes("const winInsights = insightsIn(days, wnd, data.insights)"));
 ok("洞察挂载用 winInsights", c.includes("element(Insights, { insights: winInsights") && c.includes("element(TopBoards, { insights: winInsights })"));
-ok("宿主 schema 升至 10（含费用）", h.includes("const CACHE_SCHEMA_VERSION = 10"));
+ok("宿主 schema 升至 11（含费用与会话洞察）", h.includes("const CACHE_SCHEMA_VERSION = 11"));
 // 回归：MCP 工具（mcp__<server>__<tool>）曾因「非核心工具即插件」的判据
 // 同时进插件榜与 MCP 榜，插件榜因此出现 mcp__siyuan__http_request 之类怪名。
 ok("MCP 工具不计入插件榜", h.includes("const asPlugin = !CORE_TOOLS.has(tn) && !srv;") && !h.includes("const isPlugin = !CORE_TOOLS.has(tn);"));
@@ -587,7 +707,7 @@ ok("指标卡并入单组", c.includes('element("div", { className: "ust-metrics
   // 顺序断言：Token → 缓存命中 → 命中率 → 最常用模型 → 轮次 → 消息 → 活跃时长 → 活跃天数
   const start = c.indexOf("function SessionUsageView");
   // 窗口取到 TOP5 之后：顺序卡在骨架分支之后，距函数头约 8600–9700，Trend/Donut/TOP5 到 11k 左右
-  const body = start >= 0 ? c.slice(start, start + 14000) : "";
+  const body = start >= 0 ? c.slice(start, start + 18000) : "";
   const order = ["Token 用量", "缓存命中", "命中率", "最常用模型", "轮次", "消息", "活跃时长", "活跃天数"];
   const idx = order.map((k) => body.indexOf('label: "' + k + '"'));
   ok("概览卡顺序与主面板一致", idx.every((v, i) => v >= 0 && (i === 0 || v > idx[i - 1])));
@@ -601,7 +721,10 @@ ok("页脚含刷新按钮", c.includes('className: "ust-sessview-foot"'));
 // 小时趋势：数据源为当前会话的小时桶，Trend 走单日窗口 → 自动切 0-23 小时模式
 // 需求：小时趋势标题不带日期文本（单日场景日期图已隐藏，日期信息无需重复）
 ok("小时趋势标题不含日期", c.includes('title: "小时用量趋势",') && !c.includes('"小时用量趋势（"'));
-ok("小时窗口只含一个日期键", c.includes('const hourWnd = { id: "hour", label: "全部", dateKeys: [activeDate] };'));
+// 小时窗口的 label 传选中日：标题前缀取自 wnd.label，写死「全部」会让 24 根柱看不出是哪天
+ok("小时窗口只含一个日期键", c.includes('dateKeys: [activeDate] };'));
+ok("小时窗口 label 为选中日", c.includes('label: activeDate ? fmtDayLabel(activeDate) : ""'));
+ok("主面板小时窗口 label 为选中日", c.includes('label: effectivePick ? fmtDayLabel(effectivePick) : ""'));
 ok("小时数据取会话级 hours 字段", c.includes("meta && meta.hours") && c.includes("hourMap.set") === false && c.includes("const hourMap = new Map(hourBuckets.map"));
 ok("补齐 24 格不留空洞", c.includes("Array.from({ length: 24 }"));
 ok("小时趋势喂入小时窗口", c.includes("days: [hourDay], window: hourWnd,"));
@@ -632,22 +755,22 @@ ok("卸载时取消挂起的首帧请求", (() => {
 ok("会话页有独立 loading 状态", (c.match(/const \[loading, setLoading\] = react\.useState\(true\);/g) || []).length >= 2);
 ok("loading 仅在无数据时早退", (() => {
   const start = c.indexOf("function SessionUsageView");
-  const seg = start >= 0 ? c.slice(start, start + 6000) : "";
+  const seg = start >= 0 ? c.slice(start, start + 16000) : "";
   return seg.includes("if (loading && !data) {");
 })());
 ok("首屏出骨架卡片", (() => {
   const start = c.indexOf("function SessionUsageView");
-  const seg = start >= 0 ? c.slice(start, start + 6000) : "";
+  const seg = start >= 0 ? c.slice(start, start + 16000) : "";
   return /\[0, 1, 2, 3, 4, 5, 6, 7\]\.map/.test(seg) && seg.includes("ust-skeleton");
 })());
 ok("加载态对读屏播报", (() => {
   const start = c.indexOf("function SessionUsageView");
-  const seg = start >= 0 ? c.slice(start, start + 6000) : "";
+  const seg = start >= 0 ? c.slice(start, start + 16000) : "";
   return seg.includes('role: "status"') && seg.includes('"aria-live": "polite"');
 })());
 ok("加载态刷新键转圈", (() => {
   const start = c.indexOf("function SessionUsageView");
-  const seg = start >= 0 ? c.slice(start, start + 6000) : "";
+  const seg = start >= 0 ? c.slice(start, start + 16000) : "";
   return seg.includes('className: "ust-btn-ico is-spin"');
 })());
 ok("骨架占位样式已定义", c.includes(".ust-sessview-block-skel {"));
@@ -712,7 +835,7 @@ ok("小时桶入账 usage", h.includes("const hb = ensureSessHour(hh);") && h.in
 ok("小时桶累计轮次", h.includes("ensureSessHour(sh).turns += 1"));
 ok("小时桶累计消息", (h.match(/ensureSessHour\(sh\)\.messages \+= 1;/g) || []).length === 2);
 ok("会话行下发 hours", h.includes("hours: [...sessHours.entries()]"));
-ok("缓存 schema 升至 9", h.includes("const CACHE_SCHEMA_VERSION = 10"));
+ok("缓存 schema 升至 11", h.includes("const CACHE_SCHEMA_VERSION = 11"));
 
 section("宿主侧：会话级洞察");
 ok("会话累计工具计数", h.includes("const sessToolCounts = new Map()"));
@@ -724,7 +847,7 @@ section("宿主侧：会话 × 天 × 小时桶");
 ok("天小时桶已声明", h.includes("hours: new Map()") && h.includes("const ensureSessDayHour"));
 ok("天小时桶入账 usage", h.includes("const sh = ensureSessDayHour(ss, hour);") && h.includes("addMetrics(sh.metrics, usage)"));
 ok("会话行下发 dayHours", h.includes("dayHours: [...days.entries()]"));
-ok("缓存 schema 升至 9（历史段）", h.includes("const CACHE_SCHEMA_VERSION = 10"));
+ok("缓存 schema 升至 11（历史段）", h.includes("const CACHE_SCHEMA_VERSION = 11"));
 
 section("客户端：日期趋势联动与页脚吸附");
 ok("新增日期用量趋势", c.includes('title: "日期用量趋势"'));
@@ -733,7 +856,7 @@ ok("日期趋势传选中态", c.includes("pickKey: effectivePick"));
 ok("小时趋势跟随选中日", c.includes("const activeDate = pickedDay ? pickedDay.date : autoPick;"));
 ok("点选后取该天小时桶", c.includes("const pickedDay = dayHours.find((d) => d.date === effectivePick) || null;"));
 ok("未点选取跨天合并口径", c.includes("(Array.isArray(meta && meta.hours) ? meta.hours : [])"));
-ok("Trend 支持变体与点选回调", /function Trend\(\{ days, window: wnd, title, variant = "bar", showRangeLabel = true, onPick, pickKey(, ranks = null)? \}\)/.test(c));
+ok("Trend 支持变体与点选回调", /function Trend\(\{ days, window: wnd, title, variant = "bar", showRangeLabel = true, onPick, pickKey, ranks = null, metric: metricProp, onMetricChange, showMetricSwitch = true, datePrefix, seriesOrder = null \}\)/.test(c));
 ok("柱体与折线点均带选中态", c.includes('className: cF(s.rank) + " ust-bar" + (isPicked ? " is-picked" : "")') && c.includes('className: "ust-pick-ring"'));
 ok("选中态样式已定义", c.includes(".ust-bar.is-picked {") && c.includes(".ust-hitband.is-picked {"));
 ok("页脚始终贴合底部", /\.ust-sessview-foot \{[^}]*margin: auto -32px 0;/.test(c) && /\.ust-sessview \{[^}]*min-height: 100%;/.test(c));
@@ -743,8 +866,17 @@ ok("主面板根撑满容器", c.includes(".ust-pageBody > .ust-root { min-heigh
 ok("主面板页脚 margin-top:auto", /\.ust-footer \{[^}]*margin: auto -32px 0;/.test(c));
 ok("页脚底色两层不透底", /\.ust-sessview-foot \{[^}]*background-color: var\(--surface\)[^}]*linear-gradient/.test(c));
 ok("页脚通栏负外边距", c.includes("margin: auto -32px 0;") && c.includes("padding: 6px 32px 8px;"));
-// 日期趋势：隐藏右侧「全部」区间文案
-ok("日期趋势隐藏区间文案", c.includes('title: "日期用量趋势",') && /showRangeLabel: false,/.test(c));
+// 需求：日期用量趋势标题增加日期文案（小时趋势同样逻辑）。
+// 区间不再单独占右侧一行，而是并进标题本身。
+// 需求：日期放在标题最前面，且与标题同字号
+ok("日期趋势日期前缀为独立 span", c.includes('className: "ust-h2-date" }, datePrefix'));
+ok("标题在日期之后", c.includes('element("span", { key: "s" }, " " + (title ||'));
+ok("日期前缀与标题同字号（不设 font-size）", c.includes(".ust-h2-date {") && !/\.ust-h2-date \{[^}]*font-size/.test(c));
+ok("小时趋势标题含选中日", c.includes("datePrefix: activeDates.length > 1 ? (effectivePick ? fmtDayLabel(effectivePick)"));
+// 回归：旧格式是「标题 · 日期」，现改为日期在前
+ok("标题不再是「标题 · 日期」旧格式", !c.includes('" · " + scope'));
+ok("日期前缀样式已定义", c.includes(".ust-h2-date { margin-right: 6px;"));
+ok("右侧独立区间行已移除", !c.includes('showRangeLabel ? element("div", { className: "ust-sub" }, wnd.label) : null'));
 // 小时趋势与日期趋势同为堆叠柱状，样式统一
 ok("小时趋势为柱状", c.includes('title: "小时用量趋势",') && !c.includes('variant: "line", showRangeLabel: false,'));
 ok("两图共用堆叠柱实现", c.includes('className: cF(s.rank) + " ust-bar"') && c.includes('title: "日期用量趋势",'));

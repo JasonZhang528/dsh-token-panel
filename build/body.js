@@ -1,7 +1,4 @@
 // dsh-token-panel —— Token用量统计(客户端)
-// 排版：固定 px 字阶、WCAG 对比度达标、4 的倍数间距阶梯
-// 图表：日历点阵 / 发丝折线 / 刻度环，配色与排版自研
-// 关键：按实测容器宽度 1:1 出图，不做 viewBox 缩放（缩放会让小字号变成看不见）
 window.__ModuleLoader__.load({
 	id: "dsh-token-panel",
 	factory: (require) => {
@@ -302,8 +299,18 @@ window.__ModuleLoader__.load({
 		// ranks（可选）：外部给定的「模型 → 色序号」映射。传入时按外部序号取色，
 		// 使同一模型在不同页面（用量统计 / 会话用量）保持同一颜色——
 		// 否则两页各自按自己的窗口排序，同一模型会拿到不同色槽，图例对不上。
-		function foldModels(list, n = 4, ranks = null) {
-			const sorted = [...list].sort((a, b) => b.total - a.total);
+		function foldModels(list, n = 4, ranks = null, seriesOrder = null) {
+			// seriesOrder 优先：按外部给定顺序排（未知模型排末尾），保证小时趋势图例顺序与日期趋势一致
+			const sorted = seriesOrder
+				? [...list].sort((a, b) => {
+					const ia = seriesOrder.indexOf(a.model);
+					const ib = seriesOrder.indexOf(b.model);
+					if (ia >= 0 && ib >= 0) return ia - ib;
+					if (ia >= 0) return -1;
+					if (ib >= 0) return 1;
+					return b.total - a.total;
+				})
+				: [...list].sort((a, b) => b.total - a.total);
 			const rankOf = (m, i) => (ranks && ranks.has(m.model) ? ranks.get(m.model) : i);
 			if (sorted.length <= n + 1) return sorted.map((m, i) => ({ ...m, rank: rankOf(m, i) }));
 			const head = sorted.slice(0, n).map((m, i) => ({ ...m, rank: rankOf(m, i) }));
@@ -1264,6 +1271,8 @@ window.__ModuleLoader__.load({
 			// 全局色序：按全量 days 计算，不受时间范围影响 ——
 			// 与「用量统计」页取同一份，两个页面的图例颜色因此一致。
 			const globalRanks = react.useMemo(() => modelRanksIn(days, null), [days]);
+			// 日期趋势的模型顺序：小时趋势图例需要与之保持一致
+			const dailySeriesOrder = react.useMemo(() => foldModels(modelTotalsIn(days, dayWnd), MODEL_FOLD, globalRanks).map(s => s.model), [days, dayWnd, globalRanks]);
 			const today = data ? sessionUsageAggregate(days, sessionId, todayKey) : null;
 			const all = data ? sessionUsageAggregate(days, sessionId, null) : null;
 			const metricCard = (label, value, sub) => element("div", { key: label, className: "ust-metric" },
@@ -1413,16 +1422,20 @@ window.__ModuleLoader__.load({
 		// variant："bar"（默认，堆叠柱）| "line"（多模型折线，每模型一条）。
 		// showRangeLabel：右侧是否显示区间文案（主面板显示「今天/全部」，会话页两种图表都不需要）。
 		// onPick / pickKey：可选点选联动。用量页「日期趋势」点柱后下方小时趋势跟随切换。
-		function Trend({ days, window: wnd, title, variant = "bar", showRangeLabel = true, onPick, pickKey, ranks = null }) {
+		function Trend({ days, window: wnd, title, variant = "bar", showRangeLabel = true, onPick, pickKey, ranks = null, metric: metricProp, onMetricChange, showMetricSwitch = true, datePrefix, seriesOrder = null }) {
 			const [boxRef, boxW] = useMeasure();
 			const [hidden, setHidden] = react.useState({});
+			// 柱高指标：token = 总量（默认）；cost = 费用。受控模式：外部传入时两块趋势共用。
+			const [metricInner, setMetricInner] = react.useState("token");
+			const metric = metricProp !== undefined ? metricProp : metricInner;
+			const setMetric = onMetricChange || setMetricInner;
+			// 命中率折线开关：默认开（需求：默认选中）。图例项点击切换。
+			const [showRate, setShowRate] = react.useState(true);
 			const [hover, setHover] = react.useState(null);
 			const [placeTip, clearTip, tipEl] = useTip();
 			const scrollRef = react.useRef(null);
 			// 柱高指标：token = 用量（默认，堆叠柱）；cost = 费用（同色堆叠，柱高为 CNY）
-			// 两者共用同一套堆叠与配色，只换「每段取哪个数」，图例与悬停保持一致。
-			const [metric, setMetric] = react.useState("token");
-
+			// 两者共用同一套堆叠与配色，只换「每段取哪个数」，图例与悬停保持一致。
 			// 折线模式：一条线 = 一个模型（点高 = 当期用量）；默认堆叠柱。
 			const isLine = variant === "line";
 
@@ -1440,7 +1453,7 @@ window.__ModuleLoader__.load({
 			const BAR_LABEL_W = 46;
 			// 窄面板里柱子太多会糊成一团：按宽度决定显示几条
 			// 与表格配色的折叠档数保持一致，否则色点与图例会对不上
-			const series = react.useMemo(() => foldModels(modelTotalsIn(days, wnd), MODEL_FOLD, ranks), [days, wnd, ranks]);
+			const series = react.useMemo(() => foldModels(modelTotalsIn(days, wnd), MODEL_FOLD, ranks, seriesOrder), [days, wnd, ranks, seriesOrder]);
 			// 把一个 fold 出来的段（可能是「其他 N 个模型」）在当期的 byModel 里还原成用量或费用。
 			// metric === "cost" 时取 cost；某模型无价（cost 非数字）按 0 计，
 			// 这样柱高只反映「有价的那些」，与表格里的「未定价」口径一致（不猜价）。
@@ -1457,8 +1470,8 @@ window.__ModuleLoader__.load({
 			// 图例交互：聚焦选择（focus）——点某项只看它的数据，其余隐藏；再点同项取消。
 			// 旧的「显隐切换」会让用户逐个关掉不想看的模型（点 N-1 次），
 			// 且无法同时突出某一个。聚焦只需一次点击。
-			const focus = hidden.focus || null;
-			const visible = series.map((s) => (focus ? s.model === focus : true));
+			const off = (name) => !!hidden[name];
+			const visible = series.map((s) => !off(s.model));
 			const visTotals = values.map((v) => v.vals.reduce((a, b, i) => a + (visible[i] ? b : 0), 0));
 			// 命中率折线：逐期按「缓存命中 / 当期满量」算，与各表的命中率同口径。
 			// 分母为 0 的期（无用量）返回 null，折线在该点断开而不是掉到 0%
@@ -1497,7 +1510,10 @@ window.__ModuleLoader__.load({
 			// 刻度贴轴、柱心也在轴上，两者会一起右移，间距纹丝不动。
 			const AXIS_LAB_W = narrow ? 44 : 50;
 			// PAD_T 留出「最高柱 + 柱顶数值」的高度：数值悬在柱顶上方，不被裁或压住刻度线
-			const PAD_L = AXIS_LAB_W + 8, PAD_R = narrow ? 6 : 10, PAD_T = 34, PAD_B = 34;
+			// PAD_R：右轴命中率刻度（「100%」约 26px）需要位置，太窄会被裁掉。
+			// 仅在画右轴时加宽（费用/小时图无右轴，保持紧凑）。
+			const HAS_RATE_AXIS = !isLine && metric !== "cost" && !isHour;
+			const PAD_L = AXIS_LAB_W + 8, PAD_R = HAS_RATE_AXIS ? 34 : (narrow ? 6 : 10), PAD_T = 34, PAD_B = 34;
 			// 柱身内缩半个柱宽：首柱左缘贴住 Y 轴、末柱右缘不越右界。
 			// 否则柱心落在轴线上，左半身（最多 17px）会压住峰值刻度，末柱也会被裁。
 			// 注意只加大 PAD_L 治不了这个重叠——刻度贴轴、柱心也在轴上，两者同步右移。
@@ -1683,7 +1699,7 @@ window.__ModuleLoader__.load({
 			//   · 小时趋势不画 —— 单日 24 点的命中率抖动大、噪声多，读不出趋势；
 			//   · 折线模式（variant=line）不画 —— 那条线本身已是数据。
 			const rateLine = (() => {
-				if (isLine || metric === "cost" || isHour) return null;
+				if (!showRate || isLine || metric === "cost" || isHour) return null;
 				const pts = [];
 				rateSeries.forEach((r, i) => { if (r !== null) pts.push({ i, r }); });
 				if (pts.length < 1) return null;
@@ -1700,17 +1716,18 @@ window.__ModuleLoader__.load({
 					// 右轴刻度：只画 0 / 50 / 100 三条短刻度，避免与左轴刻度抢注意力
 					[0, 0.5, 1].map((r) => element("text", {
 						key: "rl" + r, className: "ust-rate-axis",
-						x: W - PAD_R + 2, y: yOf(r) + 3, textAnchor: "start",
+						x: W - PAD_R + 6, y: yOf(r) + 3, textAnchor: "start",
 					}, pctRatio(r))),
-					segs.map((sg, si) => sg.length === 1
-						? element("circle", {
-							key: "rp" + si, className: "ust-rate-dot",
-							cx: xc(sg[0].i), cy: yOf(sg[0].r), r: 2.5,
-						})
-						: element("polyline", {
-							key: "rl" + si, className: "ust-rate-line",
-							points: sg.map((p) => xc(p.i) + "," + yOf(p.r)).join(" "),
-						})),
+					segs.map((sg, si) => [
+							sg.length === 1 ? null : element("polyline", {
+								key: "rl" + si, className: "ust-rate-line",
+								points: sg.map((p) => xc(p.i) + "," + yOf(p.r)).join(" "),
+							}),
+							...sg.map((p, pi) => element("circle", {
+								key: "rd" + si + "_" + pi, className: "ust-rate-dot",
+								cx: xc(p.i), cy: yOf(p.r), r: 2.5,
+							})),
+						]).flat(),
 				);
 			})();
 
@@ -1733,19 +1750,32 @@ window.__ModuleLoader__.load({
 					// 且与下面的量级值重复显示。小于 1 万时 fmtLarge 本就是精确值，不损失信息。
 					element("div", { className: "ust-tip-body" }, "合计 " + fmtVal(visTotals[i]) + " " + unitOf),
 					rows,
+					// 命中率行：折线本身不单独出提示，把当期命中率并入同一 tooltip，
+					// 悬停即同时读到「用量 + 命中率」，不必再对准折线点。
+					showRate && !isLine && metric !== "cost" && !isHour && rateSeries[i] !== null
+						? element("div", { className: "ust-tip-row" },
+							element("span", { className: "ust-tip-key" },
+								element("span", { className: "ust-tip-line" }),
+								element("span", null, "命中率")),
+							element("span", { className: "ust-tip-val" }, pctRatio(rateSeries[i])))
+						: null,
 				));
 			};
 
 			return element("div", { className: "ust-block" },
 				element("div", { className: "ust-block-head" },
 					element("div", { className: "ust-block-titleRow" },
-						element("h2", { className: "ust-h2" }, title || (isHour ? "按小时的用量分布" : "用量趋势")),
+						element("h2", { className: "ust-h2" },
+							datePrefix
+								? [element("span", { key: "d", className: "ust-h2-date" }, datePrefix),
+									element("span", { key: "s" }, " " + (title || (isHour ? "按小时的用量分布" : "用量趋势")))]
+								: (title || (isHour ? "按小时的用量分布" : "用量趋势")),
+						),
 						element("div", { className: "ust-sub" },
 							isLine ? "一条线 = 一个模型，点高 = 当期用量"
 								: metric === "cost" ? "一根柱 = 一个模型，柱高 = 当期费用（CNY）"
 								: "一根柱 = 一个模型，柱高 = 当期总量"),
 					),
-					showRangeLabel ? element("div", { className: "ust-sub" }, wnd.label) : null,
 					// 指标切换 + 命中率折线开关：与图例同处右侧，不另占一行
 					element("div", { className: "ust-trendCtrl" },
 						element("div", { className: "ust-trendSeg", role: "tablist", "aria-label": "柱高指标" },
@@ -1760,16 +1790,15 @@ window.__ModuleLoader__.load({
 				// 图例置于图表上方
 				element("div", { className: "ust-legend ust-legend--above" },
 					series.map((s) => {
-						const isFocus = focus === s.model;
-						const dim = focus && !isFocus;
+						const isOff = off(s.model);
 						return element("span", {
 							key: s.model,
-							className: "ust-legend-item" + (isFocus ? " is-focus" : "") + (dim ? " is-dim" : ""),
-							style: { opacity: dim ? 0.35 : 1 },
-							title: isFocus ? "点击取消聚焦，恢复全部模型" : "点击只看这个模型",
-							onClick: () => setHidden((h) => ({ ...h, focus: h.focus === s.model ? null : s.model })),
+							className: "ust-legend-item" + (isOff ? " is-off" : ""),
+							style: { opacity: isOff ? 0.4 : 1 },
+							title: isOff ? "点击显示 " + s.model : "点击隐藏 " + s.model,
+							onClick: () => setHidden((h) => ({ ...h, [s.model]: !h[s.model] })),
 							role: "button", tabIndex: 0,
-							"aria-pressed": isFocus,
+							"aria-pressed": !isOff,
 						},
 							element("span", { className: "ust-legend-dot " + cB(s.rank) }),
 							element("span", null, s.model),
@@ -1778,7 +1807,14 @@ window.__ModuleLoader__.load({
 					// 命中率折线条目：只有真画折线时才出现，避免图例承诺了图里没有的东西。
 					// 用「线」形标识而非色点，与图中的实线一一对应。
 					!isLine && metric !== "cost" && !isHour
-						? element("span", { className: "ust-legend-item ust-legend-item--rate", title: "缓存命中率（右轴 0–100%）" },
+						? element("span", {
+							className: "ust-legend-item ust-legend-item--rate" + (showRate ? "" : " is-off"),
+							style: { opacity: showRate ? 1 : 0.4 },
+							title: showRate ? "点击隐藏命中率折线" : "点击显示命中率折线",
+							onClick: () => setShowRate((v) => !v),
+							role: "button", tabIndex: 0,
+							"aria-pressed": showRate,
+						},
 							element("span", { className: "ust-legend-line" }),
 							element("span", null, "命中率"),
 						)
@@ -2037,7 +2073,11 @@ window.__ModuleLoader__.load({
 			}, [range, days]);
 			// 模型配色序号：窗口内按用量降序编号，表格色点 / 柱状图 / 圆环共用，保证同模型同色。
 			// 必须放在加载态早退之前——hooks 数量在两次渲染间必须一致。
+			const [metric, setMetric] = react.useState("token");
+			// 趋势图指标：日期 / 小时两块趋势共用一份。切换器只挂在日趋势上。
 			const ranks = react.useMemo(() => modelRanksIn(days, null), [days]);
+			// 日期趋势的模型顺序：小时趋势图例需要与之保持一致
+			const dailySeriesOrder = react.useMemo(() => foldModels(modelTotalsIn(days, wnd), MODEL_FOLD, ranks).map(s => s.model), [days, wnd, ranks]);
 
 			// 日期栏外壳：加载态与主视图共用，保证「先进页面、再出数据」
 			const headerEl = 				element("div", { className: "ust-header" },
@@ -2157,7 +2197,7 @@ window.__ModuleLoader__.load({
 				: (winActive.length ? winActive[winActive.length - 1].date : null);
 			const effectivePick = (pickDate && winActiveSet.has(pickDate)) ? pickDate : autoPick;
 			const pickedDay = effectivePick ? days.find((d) => d.date === effectivePick) : null;
-			const hourWnd = { id: "hour", label: "全部", dateKeys: effectivePick ? [effectivePick] : [] };
+			const hourWnd = { id: "hour", label: effectivePick ? fmtDayLabel(effectivePick) : "", dateKeys: effectivePick ? [effectivePick] : [] };
 
 			return element("div", { className: "ust-root is-busy" },
 				// 刷新中：与会话「用量」tab 同款居中指示器。只绑手动刷新（refreshing），
@@ -2172,6 +2212,8 @@ window.__ModuleLoader__.load({
 					// 第二行统一为 TOKENS 文本（不带数字）：全量数值已在 tooltip/表格里，卡面保持干净
 					element(Metric, { icon: element(IconToken), label: "窗口 Token", value: fmtLarge(stats.total), sub: "TOKENS" }),
 					element(Metric, { icon: element(IconToken), label: "缓存命中", value: fmtLarge(winStats.cacheRead), sub: "TOKENS" }),
+					// 命中率：缓存命中 / 当期满量
+					element(Metric, { icon: element(IconTrend), label: "命中率", value: fmtPct(winStats.rate), sub: "缓存命中 / 当期满量" }),
 					// 费用（CNY）：随所选时间范围重算，与 Token 指标同口径。
 					// 值为 null 表示窗口内型号全部未定价——显示「未定价」而不是 ¥0.00，
 					// 因为 0 元会被误读成「免费」。
@@ -2180,7 +2222,6 @@ window.__ModuleLoader__.load({
 						value: winCost === null ? "未定价" : fmtCost(winCost),
 						sub: winCost === null ? "价格表未收录这些型号" : "CNY · 按 1M token 单价",
 					}),
-					element(Metric, { icon: element(IconTrend), label: "命中率", value: fmtPct(winStats.rate), sub: "缓存命中 / 当期满量" }),
 					element(Metric, { icon: element(IconBolt), label: "最常用模型", value: topName, sub: topSub, text: true }),
 					// 会话 / 消息计数卡放行末：Token 类指标优先展示
 					element(Metric, { icon: element(IconChat), label: "窗口会话", value: String(winStats.sessions), sub: winScoped } ),
@@ -2198,7 +2239,7 @@ window.__ModuleLoader__.load({
 				// 多日期窗口：日期柱状图点选联动下方「小时用量趋势」（同会话「用量」tab 的交互）；
 				// 单日期窗口本身就是小时口径，不传联动、不加第二块图。
 				hasData && wnd.dateKeys.length > 0 ? element(Trend, {
-					days, window: wnd, ranks: ranks,
+					days, window: wnd, ranks: ranks, metric: metric, onMetricChange: setMetric,
 					...(multiDay ? {
 						title: "日期用量趋势",
 						onPick: (d) => setPickDate((cur) => ((cur || autoPick) === d ? null : d)),
@@ -2211,6 +2252,8 @@ window.__ModuleLoader__.load({
 					days: [pickedDay], window: hourWnd,
 					showRangeLabel: false, title: "小时用量趋势",
 					pickKey: null,
+					metric: metric, showMetricSwitch: false,
+					seriesOrder: dailySeriesOrder,
 				}) : null,
 				hasData && wnd.dateKeys.length > 0 ? element(Donut, { days, window: wnd, ranks: ranks }) : null,
 			element(ProvidersView, { days: days, window: wnd, ranks: ranks }),
@@ -2366,7 +2409,9 @@ window.__ModuleLoader__.load({
 		// 洞察与 TOP5 取宿主下发的会话行 insights（与全历史同一套口径）。
 		// 挂载期间给 body 打标记，样式据此隐藏输入框：用量页是纯读视图，把整块高度让给统计内容。
 		function SessionUsageView({ sessionId }) {
-			const [data, setData] = react.useState(null);
+						// 趋势图指标：日期 / 小时两块趋势共用一份，切换器只挂在日期趋势上。
+			const [metric, setMetric] = react.useState("token");
+const [data, setData] = react.useState(null);
 			const [error, setError] = react.useState(null);
 			// loading：仅覆盖「首次进入、尚未拿到任何数据」的窗口。
 			// 数据到位后由 busy 单独驱动（转圈 + 文案），不走骨架早退，避免每次自动刷新都重排版面。
@@ -2421,50 +2466,13 @@ window.__ModuleLoader__.load({
 				const id = setInterval(() => { load(false); }, Math.max(1, autoEvery) * 1000);
 				return () => clearInterval(id);
 			}, [sessionId, autoRefresh, autoEvery, load]);
-			if (!sessionId) return element("div", { className: "ust-placeholder" }, "打开一个会话后查看用量");
 			// 首屏加载态：数据未到位先画骨架，指标卡不显示 0（0 会被读成「本会话没有用量」）。
 			// 与主面板「用量统计」同款：先出界面、再填数据，冷启动不会卡住。
-			// 布局与正式视图逐段对齐，数据落定时原地替换，不跳动。
-			if (loading && !data) {
-				const skel = (w, h) => element("div", { className: "ust-skeleton", style: { width: w, height: h } });
-				return element("div", { className: "ust-root ust-sessview is-busy" },
-					element("div", { className: "ust-metrics", role: "status", "aria-live": "polite" },
-						// 概览卡 8 张：第一张含名称条 + 数值条，其余只出数值条（正式视图正是这个信息密度）
-						[0, 1, 2, 3, 4, 5, 6, 7].map((i) => element("div", { key: i, className: "ust-metric" },
-							i === 0 ? skel("42%", 11) : skel("58%", 11),
-							skel(i % 2 ? "48%" : "68%", 25),
-						)),
-					),
-					skel("100%", 96),
-					element("div", { className: "ust-sessview-block-skel" }, skel("100%", 260)),
-					element("div", { className: "ust-sessview-foot" },
-						element("div", { className: "ust-meta" }, "正在读取本机会话记录…"),
-						element("div", { className: "ust-auto" },
-							element("label", { className: "ust-autoToggle" },
-								element("input", { type: "checkbox", className: "ust-autoCheck", checked: autoRefresh, onChange: (e) => setAutoRefresh(e.target.checked) }),
-								element("span", null, "自动刷新"),
-							),
-							autoRefresh ? element("div", { className: "ust-autoSeg", role: "tablist", "aria-label": "自动刷新间隔" },
-								AUTO_OPTIONS.map((sec) => element("span", {
-									key: sec, role: "tab", "aria-selected": autoEvery === sec,
-									className: "ust-tab" + (autoEvery === sec ? " active" : ""),
-									onClick: () => setAutoEvery(sec),
-								}, sec + " 秒")),
-							) : null,
-						),
-						element("button", { type: "button", className: "ust-btn", disabled: true },
-							element("span", { className: "ust-btn-ico is-spin" }, element(IconRefresh)),
-							"刷新中",
-						),
-					),
-				);
-			}
-			const days = (data && data.days) || [];
+			// 布局与正式视图逐段对齐，数据落定时原地替换，不跳动。const days = (data && data.days) || [];
 			// 全局色序：按全量 days 计算，不受时间范围影响 ——
 			// 与「用量统计」页取同一份，两个页面的图例颜色因此一致。
-			const globalRanks = react.useMemo(() => modelRanksIn(days, null), [days]);
-			// 该会话的按天用量 → 合成 days（与主面板组件同构），Trend / Donut 直接复用
-			const sessionDays = days.map((d) => {
+			const globalRanks = react.useMemo(() => modelRanksIn(days, null), [days]);
+			// 日期趋势的模型顺序：小时趋势图例需要与之保持一致const sessionDays = days.map((d) => {
 				const s = (d.sessions || []).find((x) => x.id === sessionId);
 				return {
 					date: d.date,
@@ -2529,7 +2537,7 @@ window.__ModuleLoader__.load({
 			const effectivePick = pickDate || autoPick;
 			const pickedDay = dayHours.find((d) => d.date === effectivePick) || null;
 			const activeDate = pickedDay ? pickedDay.date : autoPick;
-			const hourWnd = { id: "hour", label: "全部", dateKeys: [activeDate] };
+			const hourWnd = { id: "hour", label: activeDate ? fmtDayLabel(activeDate) : "", dateKeys: [activeDate] };
 			// 小时数据优先级：点选日期 → 该天的 dayHours；未点选 → 会话级 hours（跨天同钟点合并）
 			const hourBuckets = pickedDay
 				? (pickedDay.hours || [])
@@ -2567,7 +2575,49 @@ window.__ModuleLoader__.load({
 			// 日期趋势窗口：只含有用量的天。只有一天时该图退化为一根柱、无横向对比意义，
 			// 故整块隐藏（见渲染处的 activeDates.length > 1 判断）。
 			const activeDates = sessionDays.filter((d) => d.total > 0).map((d) => d.date);
-			const dayWnd = { id: "day", label: "全部", dateKeys: activeDates };
+			const dayWnd = { id: "day", label: "全部", dateKeys: activeDates };
+
+			const dailySeriesOrder = react.useMemo(() => foldModels(modelTotalsIn(days, dayWnd), MODEL_FOLD, globalRanks).map(s => s.model), [days, dayWnd, globalRanks]);
+			if (!sessionId) return element("div", { className: "ust-placeholder" }, "打开一个会话后查看用量");
+
+
+			if (loading && !data) {
+				const skel = (w, h) => element("div", { className: "ust-skeleton", style: { width: w, height: h } });
+				return element("div", { className: "ust-root ust-sessview is-busy" },
+					element("div", { className: "ust-metrics", role: "status", "aria-live": "polite" },
+						// 概览卡 8 张：第一张含名称条 + 数值条，其余只出数值条（正式视图正是这个信息密度）
+						[0, 1, 2, 3, 4, 5, 6, 7].map((i) => element("div", { key: i, className: "ust-metric" },
+							i === 0 ? skel("42%", 11) : skel("58%", 11),
+							skel(i % 2 ? "48%" : "68%", 25),
+						)),
+					),
+					skel("100%", 96),
+					element("div", { className: "ust-sessview-block-skel" }, skel("100%", 260)),
+					element("div", { className: "ust-sessview-foot" },
+						element("div", { className: "ust-meta" }, "正在读取本机会话记录…"),
+						element("div", { className: "ust-auto" },
+							element("label", { className: "ust-autoToggle" },
+								element("input", { type: "checkbox", className: "ust-autoCheck", checked: autoRefresh, onChange: (e) => setAutoRefresh(e.target.checked) }),
+								element("span", null, "自动刷新"),
+							),
+							autoRefresh ? element("div", { className: "ust-autoSeg", role: "tablist", "aria-label": "自动刷新间隔" },
+								AUTO_OPTIONS.map((sec) => element("span", {
+									key: sec, role: "tab", "aria-selected": autoEvery === sec,
+									className: "ust-tab" + (autoEvery === sec ? " active" : ""),
+									onClick: () => setAutoEvery(sec),
+								}, sec + " 秒")),
+							) : null,
+						),
+						element("button", { type: "button", className: "ust-btn", disabled: true },
+							element("span", { className: "ust-btn-ico is-spin" }, element(IconRefresh)),
+							"刷新中",
+						),
+					),
+				);
+			}
+			
+			// 该会话的按天用量 → 合成 days（与主面板组件同构），Trend / Donut 直接复用
+			
 			// 概览指标：卡序与主面板一致（Token 类优先 → 命中 → 最常用模型 → 计数类 → 活跃天数）
 			const cards = [
 				element(Metric, { icon: element(IconToken), label: "Token 用量", value: fmtLarge(agg.total), sub: "TOKENS" }),
@@ -2605,7 +2655,7 @@ window.__ModuleLoader__.load({
 				// 只有一天数据时该图只有一根柱、无横向对比意义，整块隐藏（当天数据由小时趋势完整表达）。
 				activeDates.length > 1
 					? element(Trend, {
-						days: sessionDays, window: dayWnd, ranks: globalRanks, title: "日期用量趋势",
+						days: sessionDays, window: dayWnd, ranks: globalRanks, title: "日期用量趋势", datePrefix: "", metric: metric, onMetricChange: setMetric,
 						showRangeLabel: false,
 						onPick: (d) => setPickDate((cur) => ((cur || autoPick) === d ? null : d)),
 						pickKey: effectivePick,
@@ -2616,14 +2666,14 @@ window.__ModuleLoader__.load({
 				// 不传 onPick / pickKey：小时图是"结果视图"，联动入口只在日期图上。
 				active.length > 0
 					? element(Trend, {
-						days: [hourDay], window: hourWnd, ranks: globalRanks,
+						days: [hourDay], window: hourWnd, ranks: globalRanks, datePrefix: activeDates.length > 1 ? (effectivePick ? fmtDayLabel(effectivePick) : "") : "", metric: metric, showMetricSwitch: false, seriesOrder: dailySeriesOrder,
 						showRangeLabel: false,
 						title: "小时用量趋势",
 						pickKey: null,
 					})
 					: null,
 				// 模型用量仍取会话整体（圆环按模型占比，与小时无关）
-				active.length > 0 ? element(Donut, { days: sessionDays, window: wnd, ranks: globalRanks }) : null,
+				active.length > 0 ? element(Donut, { days: sessionDays, window: effectivePick ? { id: "day", dateKeys: [effectivePick] } : wnd, ranks: globalRanks }) : null,
 				// 与「用量统计」同款三榜 TOP5：插件 / MCP / Skill，各自取本会话 TOP5
 				sessInsights ? element(TopBoards, { insights: sessInsights }) : null,
 				active.length === 0 && data ? element("div", { className: "ust-placeholder" }, "本会话尚无 Token 用量记录") : null,
