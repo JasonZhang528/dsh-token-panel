@@ -1467,6 +1467,18 @@ window.__ModuleLoader__.load({
 				return { total: vals.reduce((a, b) => a + b, 0), vals };
 			}), [xData, series, metric]);
 
+			// 费用模式提示：无价模型按 0 计（铁律：不猜价）。窗口内若存在「有用量但未定价」
+			// 的模型，必须明示——否则费用图大量柱子归零会被误读成「切换坏了」。
+			const unpricedModels = react.useMemo(() => {
+				if (metric !== "cost") return [];
+				const seen = new Map();
+				xData.forEach((d) => (d.byModel || []).forEach((m) => {
+					if (!(m.total > 0) || seen.has(m.model)) return;
+					seen.set(m.model, typeof m.cost === "number");
+				}));
+				return [...seen.entries()].filter(([, hasPrice]) => !hasPrice).map(([m]) => m);
+			}, [metric, xData]);
+
 			// 图例交互：聚焦选择（focus）——点某项只看它的数据，其余隐藏；再点同项取消。
 			// 旧的「显隐切换」会让用户逐个关掉不想看的模型（点 N-1 次），
 			// 且无法同时突出某一个。聚焦只需一次点击。
@@ -1787,6 +1799,11 @@ window.__ModuleLoader__.load({
 						),
 					),
 				),
+				// 费用模式下的「未定价」提示：柱子大量归零时读者需要知道为什么。
+				unpricedModels.length > 0 ? element("div", { className: "ust-unpriced-note", role: "note" },
+					"以下 " + unpricedModels.length + " 个型号未收录于价格表，费用柱按 0 计：" + unpricedModels.join("、")
+				) : null,
+
 				// 图例置于图表上方
 				element("div", { className: "ust-legend ust-legend--above" },
 					series.map((s) => {

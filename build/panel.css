@@ -809,3 +809,12 @@ body[data-ds-dark-theme] .ust-line { fill: none; }
 .ust-pick-bg { fill: var(--hover); opacity: .5; }
 /* 未选中的柱略降透明度，进一步拉开主次（悬停时由命中层恢复） */
 .ust-bar.is-dim { opacity: .55; }
+
+/* 费用模式「未定价」提示：黄底细字，介于正文与辅助文案之间 */
+.ust-unpriced-note {
+	padding: 6px 10px; border-radius: 8px;
+	font-size: 11px; line-height: 1.5; color: var(--ink);
+	background: var(--hover); border: 1px solid var(--rule);
+	overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
+	-webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
