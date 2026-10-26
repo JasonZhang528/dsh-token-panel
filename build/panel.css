@@ -818,3 +818,26 @@ body[data-ds-dark-theme] .ust-line { fill: none; }
 	overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
 	-webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
+
+/* ── 账户余额 pill（composer dock，对齐原生 hNGZaa_anchor 规格） ──
+   原生 pill 实测：span.anchor(display:flex) > button.pill(gap:6px, padding:1px 8px,
+   height:22px, radius:8px, 透明底, 12px/400, color rgb(129,133,140), hover 浅底)。
+   全部走宿主令牌，明暗主题自动切换；无卡片边框，与性能指示同行同高。 */
+.ust-balAnchor{display:flex;align-items:center}
+.ust-balPill{display:flex;align-items:center;gap:6px;height:22px;padding:1px 8px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-primary,#0F1115);font-family:inherit;font-size:12px;font-weight:400;line-height:20px;font-variant-numeric:tabular-nums;cursor:pointer;transition:all .15s ease;white-space:nowrap}
+.ust-balPill:hover,.ust-balPill:focus-visible{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05));color:var(--dsw-alias-label-primary,#0F1115);outline:none}
+.ust-balPill:focus-visible{outline:2px solid var(--dsw-alias-label-primary,#0F1115);outline-offset:1px}
+.ust-balLogo{display:inline-flex;align-items:center;justify-content:center;flex:none;width:16px;height:16px;line-height:0;color:var(--dsw-alias-label-tertiary,#81858C)}
+.ust-balLogo svg{display:block;width:16px;height:16px;flex:none}
+.ust-balLabel{flex:none;color:var(--dsw-alias-label-tertiary,#81858C)}
+.ust-balSep{flex:none;opacity:.9}
+.ust-balValue{flex:none;font-weight:600;color:var(--dsw-alias-label-secondary,#5F5E59)}
+/* 赠金 / 本会话花费：与 label 同级灰阶，不加粗（弱于主余额数值） */
+.ust-balExtra{flex:none;color:var(--dsw-alias-label-tertiary,#81858C)}
+.ust-balPill.is-warn .ust-balValue,.ust-balPill.is-warn .ust-balLabel{color:var(--dsw-alias-state-error-primary,#CF1322)}
+.ust-balPill.is-pending .ust-balValue{color:var(--dsw-alias-label-tertiary,#81858C);font-weight:400}
+.ust-balIcon{display:inline-flex;width:12px;height:12px}
+.ust-balIcon svg{width:100%;height:100%}
+.ust-balIcon.is-spin{animation:ustBalSpin .7s linear infinite}
+@keyframes ustBalSpin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.ust-balIcon.is-spin{animation:none}}
