@@ -121,7 +121,7 @@ ok("按天输出会话明细", h.includes("const sessions = [...(d.bySession || 
 ok("按天输出供应商明细", h.includes("const providers = [...(d.byProvider || new Map()).entries()]"));
 ok("按天输出消息数", h.includes("messages: d.messages"));
 ok("会话名取自 session/title 事件", h.includes('case "session/title":') && h.includes("sessionTitle = ev.data.title.trim()"));
-ok("缓存带 schemaVersion", h.includes("const CACHE_SCHEMA_VERSION = 11") && h.includes("schemaVersion: CACHE_SCHEMA_VERSION"));
+ok("缓存带 schemaVersion", h.includes("const CACHE_SCHEMA_VERSION = 12") && h.includes("schemaVersion: CACHE_SCHEMA_VERSION"));
 section("宿主侧：token 费用计价（CNY）");
 // 价格源：宿主维护的 prices-auto.json（300+ 型号，USD/CNY 混排）+ 插件补充价目。
 // 铁律：表里没有的型号绝不猜价，一律进 unpriced 清单，不进总额。
@@ -135,7 +135,7 @@ ok("缺 cacheWrite 单价回退 input 价", h.includes('cacheWrite: typeof v.cac
 ok("无价返回 null 不返回 0", h.includes("function costOf(metrics, price) {") && h.includes("if (!price) return null;"));
 ok("价格表加载失败时退回补充价目", h.includes("priceTable = buildPriceTable(null, PRICE_SUPPLEMENT);"));
 ok("扫描前确保价格表就绪", h.includes("if (!priceTable) await loadPriceTable();"));
-ok("缓存 schema 升至 11（含费用与会话洞察）", h.includes("const CACHE_SCHEMA_VERSION = 11;"));
+ok("缓存 schema 升至 12（含费用与会话洞察）", h.includes("const CACHE_SCHEMA_VERSION = 12;"));
 ok("响应带 pricing 元数据", h.includes("pricing: {") && h.includes('currency: "CNY"'));
 ok("响应带无价型号清单", h.includes("unpriced: [...unpriced],"));
 // 别名归一：宿主表用 deepseek-flash 键收录显示名为 "DeepSeek V4.1 Flash" 的型号
@@ -166,14 +166,15 @@ ok("窗口费用排在命中率之后", (() => {
 })());
 ok("会话页有费用卡", c.includes('label: "Token 费用"'));
 ok("无价显示未定价而非 0 元", (c.match(/: "未定价"/g) || []).length >= 4);
-ok("四张表 + 圆环列表都有费用列", (c.match(/\}, "费用"\)/g) || []).length === 5);
+ok("四张表 + 圆环列表都有费用列", (c.match(/\}, "费用"\)/g) || []).length === 4);
 ok("会话表费用格", c.includes('(typeof r.cost === "number" ? fmtCost(r.cost) : "未定价")'));
 ok("弹窗明细费用格", c.includes('(typeof m.cost === "number" ? fmtCost(m.cost) : "未定价")'));
 // 需求：删除模型列表底部的「合计费用」行（总数在概览卡里已有，列表尾部重复且挤占空间）
 ok("模型列表不再有合计费用行", !c.includes("ust-model-sum") && !c.includes("合计费用"));
 ok("模型 tooltip 带费用", c.includes('typeof s.cost === "number" ? " · 费用 " + fmtCost(s.cost) : " · 费用未定价"'));
 // 聚合器必须保留 cost：会话 tab 的 byModel 是本地重建的，漏带会让全站显示未定价
-ok("聚合器保留 cost（bm）", (c.match(/if \(typeof m\.cost === "number"\) bm\.cost = \(bm\.cost \|\| 0\) \+ m\.cost;/g) || []).length >= 4);
+ok("聚合器统一累加器已收敛", c.includes("function bumpModel(box, m)") && (c.match(/\(m\) => bumpModel\(/g) || []).length >= 4);
+ok("聚合器保留 cost（bumpModel）", c.includes('if (typeof m.cost === "number") cur.cost = (cur.cost || 0) + m.cost;'));
 ok("聚合器保留 cost（cur）", c.includes('if (typeof x.cost === "number") cur.cost = (cur.cost || 0) + x.cost;'));
 ok("合计费用行样式已清理", !c.includes(".ust-model-sum {"));
 ok("合计数值用等宽数字", c.includes("font-variant-numeric: tabular-nums; }"));
@@ -202,7 +203,7 @@ ok("百分比数据格带 pct 类", (c.match(/className: "ust-tblNum ust-tblPct"
 section("客户端：趋势图费用指标与命中率折线");
 // 需求三项：各统计加费用列（圆环列表）、柱形图加费用、增加命中率折线。
 ok("圆环列表有费用列", c.includes('className: "ust-model-cost" }, "费用"'));
-ok("圆环列表费用列有值", c.includes('typeof s.cost === "number" ? fmtCost(s.cost) : "—"'));
+ok("圆环列表费用列有值", c.includes('typeof s.cost === "number" ? fmtCost(s.cost) : "未定价"'));
 ok("费用列样式已定义", c.includes(".ust-model-cost {"));
 // 柱形图费用：指标切换 + 按指标取数
 ok("趋势图有指标切换（总量/费用）", c.includes("const [metric, setMetric] = react.useState(\"token\")") && c.includes('["token", "总量"], ["cost", "费用"]'));
@@ -295,10 +296,10 @@ ok("宿主下发 session.dayInsights", h.includes("dayInsights: [...sessDayInsig
 // 需求修复：费用模式下小时趋势无数据 —— 根因是宿主下发的会话小时桶
 // （meta.hours / dayHours[].hours）的 byModel 不含 cost，前端 fieldOf 取不到值 → 柱高全 0。
 ok("宿主 table_get helper（含别名归一）", h.includes("function table_get(table, model)") && h.includes("table.get(normalizeModelKey(model, PRICE_SUPPLEMENT))"));
-ok("宿主会话小时桶下发 cost", h.includes("cost: priceTable ? costOf(m, table_get(priceTable, model)) || 0 : 0"));
-ok("两处小时桶都带 cost", (h.match(/cost: priceTable \? costOf\(m, table_get\(priceTable, model\)\) \|\| 0 : 0/g) || []).length >= 2);
+ok("宿主会话小时桶下发 cost", h.includes("cost: priceTable ? costOf(m, table_get(priceTable, model)) : null,"));
+ok("两处小时桶都带 cost", (h.match(/cost: priceTable \? costOf\(m, table_get\(priceTable, model\)\) : null,/g) || []).length >= 2);
 // 前端链路：hourBuckets 的 byModel 带 cost → hourByModel 累加 → hourDay.byModel → Trend.fieldOf
-ok("前端 hourByModel 累加 cost", /if \(typeof m\.cost === "number"\) bm\.cost = \(bm\.cost \|\| 0\) \+ m\.cost;/.test(c));
+ok("前端 hourByModel 累加 cost（统一 bumpModel）", c.includes("hourBuckets.forEach((b) => (b.byModel || []).forEach((m) => bumpModel(hourByModel, m)));"));
 ok("Trend fieldOf 取 cost", c.includes('metric === "cost" ? (typeof x.cost === "number" ? x.cost : 0)'));
 ok("宿主 sessDayInsights 累计", h.includes("const sessDayInsights = new Map();"));
 // 宿主仍下发 dayInsights（数据保留，前端不再消费）
@@ -316,7 +317,7 @@ ok("右轴留出足够边距", c.includes("const HAS_RATE_AXIS = !isLine && metr
 ok("右轴刻度贴内侧绘制", c.includes("x: W - PAD_R + 6, y: yOf(r) + 3"));
 ok("Donut 按选中日期过滤", c.includes('window: effectivePick ? { id: "day", dateKeys: [effectivePick] } : wnd'));
 // 宿主：schema 11 + 会话×天洞察
-ok("宿主 schema 升至 11", h.includes("const CACHE_SCHEMA_VERSION = 11;"));
+ok("宿主 schema 升至 12", h.includes("const CACHE_SCHEMA_VERSION = 12;"));
 ok("宿主 session-day insights 初始化", h.includes("insights: null };"));
 ok("宿主 buildCache 下发 session insights", h.includes("insights: ss.insights ? {"));
 ok("宿主 ensureSessDayInsights helper", h.includes("ensureSessDayInsights"));
@@ -448,6 +449,12 @@ ok("会话表新增命中率列", /element\("th", \{ className: "ust-tblNum(?: u
 ok("会话行输出命中与命中率", c.includes("fmtLarge(r.cacheRead)") && c.includes("fmtPct(hitRateOf(r))"));
 ok("供应商表含命中率列", /"供应商"[\s\S]{0,600}?"命中率"/.test(c));
 ok("会话窗口聚合累计四件套", c.includes("cur.cacheRead += s.cacheRead || 0;"));
+ok("会话行费用随窗口聚合", c.includes("if (typeof s.cost === \"number\") cur.cost = (cur.cost || 0) + s.cost;"));
+ok("供应商聚合接上费用（含逐模型）", c.includes("if (typeof p.cost === \"number\") cur.cost = (cur.cost || 0) + p.cost;") && c.includes("if (typeof m.cost === \"number\") cur.cost = (cur.cost || 0) + m.cost;"));
+ok("Trend 切换器支持隐藏", c.includes("showMetricSwitch") && c.includes(": null,"));
+ok("面板动画结束不保留 scale（tooltip 包含块）", c.includes("animation:ustPanelIn .32s cubic-bezier(.16,1,.3,1) backwards") && !c.includes("cubic-bezier(.16,1,.3,1) both"));
+ok("两拍强刷 30s 节流", c.includes("lastForceScanAt") && c.includes("Date.now() - lastForceScanAt > 30000"));
+ok("主面板不展示全历史未定价汇总条（按需求移除）", !c.includes("相关费用未计入"));
 
 section("客户端：图表改版（柱状图 + 折线双形态）");
 ok("柱状与折线形态并存", c.includes('className: cF(s.rank) + " ust-bar"') && c.includes('className: cF(s.rank) + " ust-line"'));
@@ -479,7 +486,7 @@ ok("会话弹窗已接入", c.includes("title: detail.title || detail.id") && c.
 ok("会话行可点击", c.includes("onClick: () => setDetail(r)"));
 ok("会话行支持键盘", c.includes("onKeyDown") && c.includes("e.preventDefault()"));
 ok("弹窗支持 Esc 关闭", c.includes("Escape") && c.includes('window.addEventListener("keydown", onKey)'));
-ok("会话逐模型四件套", c.includes("bm.cacheRead += m.cacheRead || 0"));
+ok("会话逐模型四件套", c.includes("cur.cacheRead += m.cacheRead || 0;"));
 ok("弹窗输出模型命中率", c.includes("fmtPct(hitRateOf(m))"));
 
 section("客户端：柱顶数值标签");
@@ -653,7 +660,7 @@ ok("缓存命中第二行为 TOKENS", c.includes('label: "缓存命中", value: 
 ok("宿主按天下发洞察计数", h.includes("day.insights") && h.includes("bumpDay"));
 ok("洞察随窗口合并", c.includes("function insightsIn(days, wnd, all)") && c.includes("const winInsights = insightsIn(days, wnd, data.insights)"));
 ok("洞察挂载用 winInsights", c.includes("element(Insights, { insights: winInsights") && c.includes("element(TopBoards, { insights: winInsights })"));
-ok("宿主 schema 升至 11（含费用与会话洞察）", h.includes("const CACHE_SCHEMA_VERSION = 11"));
+ok("宿主 schema 升至 12（含费用与会话洞察）", h.includes("const CACHE_SCHEMA_VERSION = 12"));
 // 回归：MCP 工具（mcp__<server>__<tool>）曾因「非核心工具即插件」的判据
 // 同时进插件榜与 MCP 榜，插件榜因此出现 mcp__siyuan__http_request 之类怪名。
 ok("MCP 工具不计入插件榜", h.includes("const asPlugin = !CORE_TOOLS.has(tn) && !srv;") && !h.includes("const isPlugin = !CORE_TOOLS.has(tn);"));
@@ -817,6 +824,8 @@ ok("会话页遮罩绑手动刷新", (() => {
 // 主面板：refreshing 只由手动刷新置位，自动刷新（load(false)）不置
 ok("主面板遮罩绑手动刷新", c.includes("refreshing ? element(LoadingMask"));
 ok("主面板手动刷新才置位", c.includes("const load = react.useCallback(async (force, manual) => {") && c.includes("if (manual) setRefreshing(true);"));
+ok("页脚文案由手动刷新驱动", c.includes('refreshing ? "正在重新扫描全部会话…" : (data.generatedAt'));
+ok("页脚刷新按钮由 refreshing 驱动", c.includes("disabled: refreshing, onClick: () => load(true, true)"));
 ok("主面板刷新按钮传 manual", c.includes("onClick: () => load(true, true)"));
 ok("自动刷新不带 manual", (c.match(/setInterval\(\(\) => \{ load\(false\); \}/g) || []).length >= 2);
 // 定位上下文：内容区自身建立包含块，遮罩不越界到整个视口
@@ -835,7 +844,7 @@ ok("小时桶入账 usage", h.includes("const hb = ensureSessHour(hh);") && h.in
 ok("小时桶累计轮次", h.includes("ensureSessHour(sh).turns += 1"));
 ok("小时桶累计消息", (h.match(/ensureSessHour\(sh\)\.messages \+= 1;/g) || []).length === 2);
 ok("会话行下发 hours", h.includes("hours: [...sessHours.entries()]"));
-ok("缓存 schema 升至 11", h.includes("const CACHE_SCHEMA_VERSION = 11"));
+ok("缓存 schema 升至 12", h.includes("const CACHE_SCHEMA_VERSION = 12"));
 
 section("宿主侧：会话级洞察");
 ok("会话累计工具计数", h.includes("const sessToolCounts = new Map()"));
@@ -847,7 +856,7 @@ section("宿主侧：会话 × 天 × 小时桶");
 ok("天小时桶已声明", h.includes("hours: new Map()") && h.includes("const ensureSessDayHour"));
 ok("天小时桶入账 usage", h.includes("const sh = ensureSessDayHour(ss, hour);") && h.includes("addMetrics(sh.metrics, usage)"));
 ok("会话行下发 dayHours", h.includes("dayHours: [...days.entries()]"));
-ok("缓存 schema 升至 11（历史段）", h.includes("const CACHE_SCHEMA_VERSION = 11"));
+ok("缓存 schema 升至 12（历史段）", h.includes("const CACHE_SCHEMA_VERSION = 12"));
 
 section("客户端：日期趋势联动与页脚吸附");
 ok("新增日期用量趋势", c.includes('title: "日期用量趋势"'));

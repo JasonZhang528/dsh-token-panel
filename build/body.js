@@ -17,9 +17,6 @@ window.__ModuleLoader__.load({
 			if (n >= 1e4) return (n / 1e4).toFixed(1) + "万";
 			return String(Math.round(n));
 		}
-		// 金额格式化（CNY）。关键点：API 费用经常是几分钱量级，
-		// 若沿用 fmtLarge 的「万/亿」口径，0.25 元会被显示成 0 —— 那等于说免费。
-		// 故按量级给精度：<1 元给 4 位小数，<100 给 2 位，其余给整数。
 		// 金额格式化（CNY）：一律两位小数、四舍五入。
 		// 早期版本按量级给精度（<1 元给 4 位、>=100 取整），导致同一列里
 		// "¥0.2486" 与 "¥1,235" 位数不一，对不齐也难比较。统一两位后
@@ -32,16 +29,6 @@ window.__ModuleLoader__.load({
 		}
 		function fmtFull(n) {
 			return (Number(n) || 0).toLocaleString("zh-CN");
-		}
-		function fmtDuration(ms) {
-			const totalMin = Math.floor((Number(ms) || 0) / 60000);
-			if (totalMin <= 0) return "0 分";
-			const d = Math.floor(totalMin / 1440);
-			const h = Math.floor((totalMin % 1440) / 60);
-			const m = totalMin % 60;
-			if (d > 0) return d + " 天 " + h + " 时";
-			if (h > 0) return h + " 时 " + m + " 分";
-			return m + " 分";
 		}
 		function fmtClock(ms) {
 			const n = Number(ms);
@@ -101,16 +88,6 @@ window.__ModuleLoader__.load({
 		const cS = (i) => "ust-cs" + (i % CATN);
 		const cB = (i) => "ust-cb" + (i % CATN);
 		const cVar = (i) => "var(--c" + (i % CATN) + ")";
-		// 序数色（明度 = 用量大小）：只用于热力图，单色相蓝阶
-		// 档位：0 无用量（quiet）/ 2 少量 / 3 中等 / 4 最多
-		const HEAT_LEVELS = 3;
-		const qLevel = (v, max) => {
-			if (!(v > 0) || !(max > 0)) return 0;
-			const f = v / max;
-			return f > 0.66 ? HEAT_LEVELS : f > 0.33 ? 2 : 1;
-		};
-		const qF = (lv) => "ust-qf" + lv;
-		const qB = (lv) => "ust-qb" + lv;
 		const rnd = (i, k) => Math.abs(((i * 73856093) ^ (k * 19349663)) % 1000) / 1000;
 
 		// ---------- 时间范围 ----------
@@ -140,6 +117,7 @@ window.__ModuleLoader__.load({
 			const def = RANGES.find((x) => x.id === r.id) || RANGES[3];
 			return { id: def.id, label: def.label, dateKeys: def.build(now) };
 		}
+
 		// 按窗口取天。wnd 为 null 时取全部天——用于「全局色序」这类与时间范围无关的口径
 		// （切区间时颜色不应变化）。
 		function fillDays(days, wnd) {
@@ -252,12 +230,12 @@ window.__ModuleLoader__.load({
 /* 遮罩与面板 */
 .ust-overlay{position:fixed;inset:0;z-index:900}
 .ust-mask{position:absolute;inset:0;background:var(--dsw-alias-bg-mask-2,rgba(0,0,0,.35));backdrop-filter:blur(2px);animation:ustFadeIn .22s ease both}
-.ust-panel{position:absolute;top:0;left:0;right:0;bottom:0;margin:auto;width:min(1120px,calc(100vw - 40px));height:min(calc(100vh - 48px),820px);max-width:calc(100vw - 40px);max-height:calc(100vh - 48px);box-sizing:border-box;background:var(--dsw-alias-bg-layer-2,#fff);border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));border-radius:16px;box-shadow:var(--dsw-shadow-lv3,0 12px 40px rgba(0,0,0,.18));display:flex;flex-direction:column;overflow:hidden;animation:ustPanelIn .32s cubic-bezier(.16,1,.3,1) both}
+.ust-panel{animation:ustPanelIn .32s cubic-bezier(.16,1,.3,1) backwards;position:absolute;top:0;left:0;right:0;bottom:0;margin:auto;width:min(1120px,calc(100vw - 40px));height:min(calc(100vh - 48px),820px);max-width:calc(100vw - 40px);max-height:calc(100vh - 48px);box-sizing:border-box;background:var(--dsw-alias-bg-layer-2,#fff);border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));border-radius:16px;box-shadow:var(--dsw-shadow-lv3,0 12px 40px rgba(0,0,0,.18));display:flex;flex-direction:column;overflow:hidden}
 .ust-overlay.is-closing .ust-mask{animation:ustFadeOut .18s ease both}
-.ust-overlay.is-closing .ust-panel{animation:ustPanelOut .18s ease both}
+.ust-overlay.is-closing .ust-panel{animation:ustPanelOut .18s ease forwards}
 @keyframes ustFadeIn{from{opacity:0}to{opacity:1}}
 @keyframes ustFadeOut{from{opacity:1}to{opacity:0}}
-@keyframes ustPanelIn{from{opacity:0;scale:.97}to{opacity:1;scale:1}}
+@keyframes ustPanelIn{from{opacity:0}to{opacity:1}}
 @keyframes ustPanelOut{from{opacity:1;scale:1}to{opacity:0;scale:.98}}
 @media (prefers-reduced-motion: reduce){.ust-mask,.ust-panel{animation:none!important}}
 
@@ -295,6 +273,24 @@ window.__ModuleLoader__.load({
 			cacheWrite: a.cacheWrite + (m.cacheWrite || 0),
 			total: a.total + (m.total || 0),
 		}), { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 });
+		// 统一的逐模型四件套累加器：sessionsIn / providersIn / 会话「用量」tab 的
+		// sessionDays 与 hourByModel 曾各写一份，cost 只在一部分副本里接上——
+		// 会话表与供应商表的「费用」列因此恒为「未定价」。收敛为一个实现：
+		// box 按 model 键合并，四件套与 cost（有价才计、无价不冒充 0）累加，
+		// 颜色取第一个非空值，保证同一模型在任何聚合路径下都拿到同一颜色。
+		function bumpModel(box, m) {
+			const cur = box[m.model] || { model: m.model, color: m.color, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, cost: 0 };
+			cur.input += m.input || 0;
+			cur.output += m.output || 0;
+			cur.cacheRead += m.cacheRead || 0;
+			cur.cacheWrite += m.cacheWrite || 0;
+			cur.total += m.total || 0;
+			// 费用按型号累加（同一次批处理的日均费用可加）；无价保持未定价，不用 0 冒充
+			if (typeof m.cost === "number") cur.cost = (cur.cost || 0) + m.cost;
+			if (!cur.color && m.color) cur.color = m.color;
+			box[m.model] = cur;
+			return cur;
+		}
 		// 折叠模型列表：按用量降序取前 n 个，其余并成「其他 N 个模型」。
 		// ranks（可选）：外部给定的「模型 → 色序号」映射。传入时按外部序号取色，
 		// 使同一模型在不同页面（用量统计 / 会话用量）保持同一颜色——
@@ -434,8 +430,10 @@ window.__ModuleLoader__.load({
 			(days || []).forEach((d) => {
 				if (!((wnd.dateKeys || []).includes(d.date))) return;
 				(d.sessions || []).forEach((s) => {
-					const cur = acc.get(s.id) || { id: s.id, total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0, messages: 0, durationMs: 0, lastTime: null, byModel: {} };
+					const cur = acc.get(s.id) || { id: s.id, total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0, messages: 0, durationMs: 0, lastTime: null, cost: 0, byModel: {} };
 					cur.durationMs += s.durationMs || 0; // 窗口内各天的分段活跃时长累加
+					// 行级费用：服务端按天下发 cost（null=当天全未定价），有价才累加
+					if (typeof s.cost === "number") cur.cost = (cur.cost || 0) + s.cost;
 					cur.total += s.total || 0;
 					cur.input += s.input || 0;
 					cur.output += s.output || 0;
@@ -445,16 +443,7 @@ window.__ModuleLoader__.load({
 					cur.messages += s.messages || 0;
 					if (s.lastTime && (!cur.lastTime || s.lastTime > cur.lastTime)) cur.lastTime = s.lastTime;
 					// 逐模型的完整四件套：会话弹窗要按模型给命中率，只留 total 不够
-					(s.byModel || []).forEach((m) => {
-						const bm = cur.byModel[m.model] || { model: m.model, color: m.color, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
-						bm.input += m.input || 0; bm.output += m.output || 0;
-						bm.cacheRead += m.cacheRead || 0; bm.cacheWrite += m.cacheWrite || 0;
-						bm.total += m.total || 0;
-				// 费用按型号累加（同一次批处理的日均费用可加）；无价保持未定价，不用 0 冒充
-				if (typeof m.cost === "number") bm.cost = (bm.cost || 0) + m.cost;
-						if (!bm.color && m.color) bm.color = m.color;
-						cur.byModel[m.model] = bm;
-					});
+					(s.byModel || []).forEach((m) => bumpModel(cur.byModel, m));
 					acc.set(s.id, cur);
 				});
 			});
@@ -470,21 +459,15 @@ window.__ModuleLoader__.load({
 		// 按窗口聚合「供应商」维度：合并窗口内各天的供应商桶，占比按窗口总量重算
 		function providersIn(days, wnd) {
 			const acc = new Map();
-			// 逐模型的完整四件套：弹窗要按模型给命中率，只留 total 不够
-			const bump = (box, m) => {
-				const cur = box[m.model] || { model: m.model, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
-				cur.input += m.input || 0; cur.output += m.output || 0;
-				cur.cacheRead += m.cacheRead || 0; cur.cacheWrite += m.cacheWrite || 0;
-				cur.total += m.total || 0;
-				box[m.model] = cur;
-			};
+			// 逐模型的完整四件套：弹窗要按模型给命中率，只留 total 不够（统一走 bumpModel）
 			fillDays(days, wnd).forEach((d) => {
 				(d.providers || []).forEach((p) => {
-					const cur = acc.get(p.provider) || { provider: p.provider, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, byModel: {} };
+					const cur = acc.get(p.provider) || { provider: p.provider, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, cost: 0, byModel: {} };
 					cur.input += p.input || 0; cur.output += p.output || 0;
 					cur.cacheRead += p.cacheRead || 0; cur.cacheWrite += p.cacheWrite || 0;
 					cur.total += p.total || 0;
-					(p.byModel || []).forEach((m) => bump(cur.byModel, m));
+					if (typeof p.cost === "number") cur.cost = (cur.cost || 0) + p.cost;
+					(p.byModel || []).forEach((m) => bumpModel(cur.byModel, m));
 					acc.set(p.provider, cur);
 				});
 			});
@@ -555,6 +538,7 @@ window.__ModuleLoader__.load({
 			);
 		}
 
+
 		// ---------- 提示框（跟随鼠标，边界内翻转） ----------
 		function useTip() {
 			const [tip, setTip] = react.useState(null);
@@ -569,8 +553,9 @@ window.__ModuleLoader__.load({
 				setTip({ node, x, y });
 			};
 			const clear = () => setTip(null);
-			// .ust-panel 已改用 flex/margin 居中（无 transform），
-			// 因此 position:fixed 的包含块回到视口，坐标可直接用 clientX/clientY。
+			// position:fixed 的包含块回到视口的条件：祖先无 transform/filter/perspective，
+			// 且无持久化的 scale 动画计算值（面板入场动画已改 backwards，结束即回到 none）。
+			// 坐标因此可直接用 clientX/clientY；若未来给面板加 transform，这里的坐标会整体偏移。
 			const el = tip ? element("div", { className: "ust-tip", style: { left: tip.x + "px", top: tip.y + "px" } }, tip.node) : null;
 			return [place, clear, el];
 		}
@@ -1112,8 +1097,8 @@ window.__ModuleLoader__.load({
 							// 与表头严格对应：缓存命中在前、总量在后（此前漏改导致两列互换，Sir 实测发现的正是这个）
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.cacheRead)),
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.total)),
-							// 费用：null = 该会话型号全部未定价；显示「未定价」而非 ¥0（0 会被读成免费）
 							element("td", { className: "ust-tblNum ust-tblPct" }, fmtPct(hitRateOf(r))),
+							// 费用：null = 该行型号全部未定价；显示「未定价」而非 ¥0（0 会被读成免费）
 							element("td", { className: "ust-tblNum" }, (typeof r.cost === "number" ? fmtCost(r.cost) : "未定价")),
 							element("td", { className: "ust-tblNum ust-tblPct" }, pctOf(r.total, grand)),
 							element("td", null, (r.byModel || []).slice(0, 4).map((m, i) =>
@@ -1148,6 +1133,7 @@ window.__ModuleLoader__.load({
 				window.addEventListener("keydown", onKey);
 				return () => window.removeEventListener("keydown", onKey);
 			}, [onClose]);
+
 			const rows = models || [];
 			const sum = rows.reduce((a, m) => a + (m.total || 0), 0);
 			// 模型超过一屏时分页，避免弹窗内长列表
@@ -1205,143 +1191,6 @@ window.__ModuleLoader__.load({
 				),
 			);
 		}
-		// ---------- 会话用量详情（会话头按钮 → 浮层） ----------
-		// 数据完全复用主页已缓存的 data.days[].sessions（按天桶），本地聚合出两个口径：
-		//   今天 = dateKey(new Date()) 当天的桶；全历史 = 所有天的桶合并。
-		// 展示与用量统计「今天」信息同构：概览卡（Token / 轮次 / 消息 / 时长 / 命中率）+ 按模型明细表。
-		function sessionUsageAggregate(days, sessionId, onlyDate) {
-			const acc = { total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0, messages: 0, durationMs: 0, byModel: {} };
-			let lastTime = null;
-			let daysSeen = 0;
-			(days || []).forEach((d) => {
-				if (onlyDate && d.date !== onlyDate) return;
-				(d.sessions || []).forEach((s) => {
-					if (s.id !== sessionId) return;
-					daysSeen += 1;
-					acc.total += s.total || 0;
-					acc.input += s.input || 0;
-					acc.output += s.output || 0;
-					acc.cacheRead += s.cacheRead || 0;
-					acc.cacheWrite += s.cacheWrite || 0;
-					acc.turns += s.turns || 0;
-					acc.messages += s.messages || 0;
-					acc.durationMs += s.durationMs || 0;
-					if (s.lastTime && (!lastTime || s.lastTime > lastTime)) lastTime = s.lastTime;
-					(s.byModel || []).forEach((m) => {
-						const bm = acc.byModel[m.model] || { model: m.model, color: m.color, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
-						bm.input += m.input || 0; bm.output += m.output || 0;
-						bm.cacheRead += m.cacheRead || 0; bm.cacheWrite += m.cacheWrite || 0;
-						bm.total += m.total || 0;
-				// 费用按型号累加（同一次批处理的日均费用可加）；无价保持未定价，不用 0 冒充
-				if (typeof m.cost === "number") bm.cost = (bm.cost || 0) + m.cost;
-						if (!bm.color && m.color) bm.color = m.color;
-						acc.byModel[m.model] = bm;
-					});
-				});
-			});
-			return { ...acc, lastTime, activeDays: daysSeen, byModelList: Object.values(acc.byModel).sort((a, b) => b.total - a.total) };
-		}
-		function SessionUsageModal({ sessionId, title, onClose }) {
-			react.useEffect(() => {
-				const onKey = (e) => { if (e.key === "Escape") onClose(); };
-				window.addEventListener("keydown", onKey);
-				return () => window.removeEventListener("keydown", onKey);
-			}, [onClose]);
-			const [closing, setClosing] = react.useState(false);
-			const close = () => { setClosing(true); setTimeout(onClose, 180); };
-			const [data, setData] = react.useState(null);
-			const [error, setError] = react.useState(null);
-			react.useEffect(() => {
-				let cancelled = false;
-				(async () => {
-					try {
-						const res = await fetch("/api/usage-stats", { credentials: "same-origin" });
-						if (!res.ok) throw new Error("HTTP " + res.status);
-						const json = await res.json();
-						if (!json || json.ok === false) throw new Error((json && json.error) || "响应异常");
-						if (!cancelled) setData(json);
-					} catch (e) {
-						if (!cancelled) setError(String((e && e.message) || e));
-					}
-				})();
-				return () => { cancelled = true; };
-			}, []);
-			const todayKey = dateKey(new Date());
-			const days = (data && data.days) || [];
-			// 全局色序：按全量 days 计算，不受时间范围影响 ——
-			// 与「用量统计」页取同一份，两个页面的图例颜色因此一致。
-			const globalRanks = react.useMemo(() => modelRanksIn(days, null), [days]);
-			// 日期趋势的模型顺序：小时趋势图例需要与之保持一致
-			const dailySeriesOrder = react.useMemo(() => foldModels(modelTotalsIn(days, dayWnd), MODEL_FOLD, globalRanks).map(s => s.model), [days, dayWnd, globalRanks]);
-			const today = data ? sessionUsageAggregate(days, sessionId, todayKey) : null;
-			const all = data ? sessionUsageAggregate(days, sessionId, null) : null;
-			const metricCard = (label, value, sub) => element("div", { key: label, className: "ust-metric" },
-				element("div", { className: "ust-metric-label" }, element("span", null, label)),
-				element("div", { className: "ust-metric-value is-text" }, value),
-				element("div", { className: "ust-metric-sub" }, sub));
-			const section = (label, agg) => {
-				if (!agg) return null;
-				const hitRate = hitRateOf(agg);
-				const models = agg.byModelList;
-				const mSum = models.reduce((s, m) => s + (m.total || 0), 0);
-				return element("div", { key: label },
-					element("div", { className: "ust-sub", style: { margin: "10px 0 8px", fontWeight: 650, color: "var(--ink)" } }, label),
-					element("div", { className: "ust-metrics" },
-						metricCard("Token 用量", fmtLarge(agg.total) + " tokens", "本会话累计"),
-						metricCard("轮次", String(agg.turns || 0), "对话轮次"),
-						metricCard("消息", fmtFull(agg.messages || 0), "assistant / user 消息"),
-						metricCard("活跃时长", fmtDuration(agg.durationMs || 0), "分段活跃口径"),
-						metricCard("缓存命中", fmtLarge(agg.cacheRead || 0) + " tokens", "命中率 " + fmtPct(hitRate)),
-						metricCard("活跃天数", String(agg.activeDays || 0) + " 天", "有用量的天数"),
-					),
-					models.length > 0 ? element("div", { className: "ust-tblWrap", style: { marginTop: 10 } },
-						element("table", { className: "ust-tbl" },
-							element("thead", null, element("tr", null,
-								element("th", null, "模型"),
-								element("th", { className: "ust-tblNum" }, "输入"),
-								element("th", { className: "ust-tblNum" }, "输出"),
-								element("th", { className: "ust-tblNum" }, "缓存命中"),
-								element("th", { className: "ust-tblNum" }, "总量"),
-								element("th", { className: "ust-tblNum ust-tblPct" }, "命中率"),
-								element("th", { className: "ust-tblNum" }, "费用"),
-								element("th", { className: "ust-tblNum" }, "占比"))),
-							element("tbody", null, models.map((m) => element("tr", { key: m.model },
-								element("td", null, element("div", { className: "ust-provCell" },
-									element("span", { className: "ust-dot", style: { background: m.color || "var(--ink)" } }),
-									element("span", { className: "ust-ellip", title: m.model }, m.model))),
-								element("td", { className: "ust-tblNum" }, fmtLarge(m.input)),
-								element("td", { className: "ust-tblNum" }, fmtLarge(m.output)),
-								element("td", { className: "ust-tblNum" }, fmtLarge(m.cacheRead)),
-								element("td", { className: "ust-tblNum" }, fmtLarge(m.total)),
-								// 费用：null = 未定价；显示「未定价」而非 ¥0
-								element("td", { className: "ust-tblNum ust-tblPct" }, fmtPct(hitRateOf(m))),
-								element("td", { className: "ust-tblNum" }, (typeof m.cost === "number" ? fmtCost(m.cost) : "未定价")),
-								element("td", { className: "ust-tblNum" }, pctOf(m.total, mSum))))),
-						),
-					) : element("div", { className: "ust-placeholder" }, "该口径下本会话尚无用量记录"),
-				);
-			};
-			return element("div", { className: "ust-overlay" + (closing ? " is-closing" : "") },
-				element("div", { className: "ust-mask", "aria-hidden": "true", onClick: close }),
-				element("div", { className: "ust-panel ust-panel--narrow", role: "dialog", "aria-modal": "true", "aria-label": "会话用量" },
-					element("div", { className: "ust-panelHead" },
-						element("div", { className: "ust-panelTitleBox" },
-							element("h2", { className: "ust-panelTitle" }, "会话用量"),
-							element("p", { className: "ust-panelSub" }, (title || sessionId) + (data ? " · 数据更新于 " + fmtClock(data.generatedAt) : "")),
-						),
-						element("button", { type: "button", className: "ust-closeBtn", "aria-label": "关闭", title: "关闭", onClick: close }, element(IconClose)),
-					),
-					element("div", { className: "ust-panelBody" },
-						error ? element("div", { className: "ust-warn" }, "加载失败：" + error)
-							: !data ? element("div", { className: "ust-placeholder" }, "正在读取用量数据…")
-							: element("div", { className: "ust-root" },
-								section("今天", today),
-								section("全部历史", all),
-							),
-					),
-				),
-			);
-		}
 		// ---------- 供应商用量统计 ----------
 		function ProvidersView({ days, window: wnd, ranks }) {
 			const rows = react.useMemo(() => providersIn(days, wnd), [days, wnd]);
@@ -1392,8 +1241,8 @@ window.__ModuleLoader__.load({
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.output)),
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.cacheRead)),
 							element("td", { className: "ust-tblNum" }, fmtLarge(r.total)),
-							// 费用：null = 该会话型号全部未定价；显示「未定价」而非 ¥0（0 会被读成免费）
 							element("td", { className: "ust-tblNum ust-tblPct" }, fmtPct(hitRateOf(r))),
+							// 费用：null = 该行型号全部未定价；显示「未定价」而非 ¥0（0 会被读成免费）
 							element("td", { className: "ust-tblNum" }, (typeof r.cost === "number" ? fmtCost(r.cost) : "未定价")),
 							element("td", { className: "ust-tblNum ust-tblPct" }, pctOf(r.total, grand)),
 							element("td", null, (r.byModel || []).slice(0, 4).map((m, i) =>
@@ -1435,7 +1284,8 @@ window.__ModuleLoader__.load({
 			const [placeTip, clearTip, tipEl] = useTip();
 			const scrollRef = react.useRef(null);
 			// 柱高指标：token = 用量（默认，堆叠柱）；cost = 费用（同色堆叠，柱高为 CNY）
-			// 两者共用同一套堆叠与配色，只换「每段取哪个数」，图例与悬停保持一致。
+			// 两者共用同一套堆叠与配色，只换「每段取哪个数」，图例与悬停保持一致。
+
 			// 折线模式：一条线 = 一个模型（点高 = 当期用量）；默认堆叠柱。
 			const isLine = variant === "line";
 
@@ -1788,16 +1638,20 @@ window.__ModuleLoader__.load({
 								: metric === "cost" ? "一根柱 = 一个模型，柱高 = 当期费用（CNY）"
 								: "一根柱 = 一个模型，柱高 = 当期总量"),
 					),
-					// 指标切换 + 命中率折线开关：与图例同处右侧，不另占一行
-					element("div", { className: "ust-trendCtrl" },
-						element("div", { className: "ust-trendSeg", role: "tablist", "aria-label": "柱高指标" },
-							[["token", "总量"], ["cost", "费用"]].map(([id, lab]) => element("span", {
-								key: id, role: "tab", "aria-selected": metric === id,
-								className: "ust-tab" + (metric === id ? " active" : ""),
-								onClick: () => setMetric(id),
-							}, lab)),
-						),
-					),
+					// 指标切换 + 命中率折线开关：与图例同处右侧，不另占一行。
+					// 切换器仅在可切换时渲染：小时趋势传受控 metric 无回调，
+					// 点击会被下一次渲染覆盖成无反应，直接隐藏。
+					showMetricSwitch
+						? element("div", { className: "ust-trendCtrl" },
+							element("div", { className: "ust-trendSeg", role: "tablist", "aria-label": "柱高指标" },
+								[["token", "总量"], ["cost", "费用"]].map(([id, lab]) => element("span", {
+									key: id, role: "tab", "aria-selected": metric === id,
+									className: "ust-tab" + (metric === id ? " active" : ""),
+									onClick: () => setMetric(id),
+								}, lab)),
+							),
+						)
+						: null,
 				),
 				// 费用模式下的「未定价」提示：柱子大量归零时读者需要知道为什么。
 				unpricedModels.length > 0 ? element("div", { className: "ust-unpriced-note", role: "note" },
@@ -2000,7 +1854,7 @@ window.__ModuleLoader__.load({
 									element("span", { className: "ust-model-hit" }, fmtLarge(s.cacheRead)),
 									element("span", { className: "ust-model-sub" }, fmtLarge(s.total)),
 									element("span", { className: "ust-model-rate" }, fmtPct(hitRateOf(s))),
-									element("span", { className: "ust-model-cost" }, (typeof s.cost === "number" ? fmtCost(s.cost) : "—"))),
+									element("span", { className: "ust-model-cost" }, (typeof s.cost === "number" ? fmtCost(s.cost) : "未定价"))),
 						)),
 							segs.length > PAGE_SIZE ? element(Pager, { page: safePage, pageCount, total: segs.length, unit: "模型", onChange: setPage }) : null,
 						),
@@ -2012,6 +1866,8 @@ window.__ModuleLoader__.load({
 		}
 
 		// ---------- 主视图 ----------
+		// 两拍强刷节流：记录最近一次强制全量扫描完成的时间；30s 内重复挂载不再触发重扫
+		let lastForceScanAt = 0;
 		function UsageStatsContent() {
 			const [data, setData] = react.useState(null);
 			const [error, setError] = react.useState(null);
@@ -2025,9 +1881,11 @@ window.__ModuleLoader__.load({
 			// 日期 → 小时联动：多日期窗口下点日期柱，切换下方「小时用量趋势」的口径。
 			// null = 未手动点选，回落到默认选中（当天 / 窗口内最近活跃日）。
 			const [pickDate, setPickDate] = react.useState(null);
+
 			// 自动刷新：默认开启，默认 5 秒
 			const [autoRefresh, setAutoRefresh] = react.useState(true);
 			const [autoEvery, setAutoEvery] = react.useState(5);
+
 			// 自定义区间倒序校验：页面外壳与主视图都要用，提前算
 			const invalid = !!(from && to && from > to);
 
@@ -2043,6 +1901,7 @@ window.__ModuleLoader__.load({
 					if (!json || json.ok === false) throw new Error((json && json.error) || "响应异常");
 					setData(json);
 					setError(null);
+					if (force) lastForceScanAt = Date.now(); // 强刷完成后才重新计时
 				} catch (e) {
 					setError(String((e && e.message) || e));
 				}
@@ -2061,7 +1920,8 @@ window.__ModuleLoader__.load({
 					if (cancelled) return;
 					await load(false);
 					if (cancelled) return;
-					await load(true);
+					// 距上次强制扫描超过 30s 才真正强刷：快速切 tab 不反复触发全量扫描
+					if (Date.now() - lastForceScanAt > 30000) await load(true);
 				};
 				const id = typeof requestAnimationFrame === "function" ? requestAnimationFrame(run) : setTimeout(run, 0);
 				return () => {
@@ -2196,7 +2056,7 @@ window.__ModuleLoader__.load({
 			// 窗口显示名：全部区间不显示（此时指标本身就是全历史口径）
 			const winName = wnd.id === "all" ? "" : wnd.label;
 			// 副标题口径：窗口内汇总则补一句全历史，避免读者误以为是全部
-			const winScoped = winName ? wnd.label + " · 共 " + ((data && data.sessionCount) || 0) + " 个" : "全部历史";
+			const winScoped = winName ? wnd.label + "会话" : "全部历史会话";
 			// 统计周期只有一天时，「活跃天数」「日均」恒为 1 / 等于总量，无信息量，不展示
 			const singleDayWindow = (wnd.dateKeys || []).length <= 1;
 			// 活动洞察与三榜 TOP5 跟随日期区间：窗口内逐天合并；「全部」退回全历史口径
@@ -2215,6 +2075,7 @@ window.__ModuleLoader__.load({
 			const effectivePick = (pickDate && winActiveSet.has(pickDate)) ? pickDate : autoPick;
 			const pickedDay = effectivePick ? days.find((d) => d.date === effectivePick) : null;
 			const hourWnd = { id: "hour", label: effectivePick ? fmtDayLabel(effectivePick) : "", dateKeys: effectivePick ? [effectivePick] : [] };
+
 
 			return element("div", { className: "ust-root is-busy" },
 				// 刷新中：与会话「用量」tab 同款居中指示器。只绑手动刷新（refreshing），
@@ -2251,7 +2112,8 @@ window.__ModuleLoader__.load({
 				),
 				// 概览数据之后：活动洞察（默认收起；随日期区间筛选）
 				element(Insights, { insights: winInsights, sessionCount: data.sessionCount, messageCount: data.messageCount }),
-				wnd.dateKeys.length === 0 ? element("div", { className: "ust-warn" }, "当前时间范围没有数据") : null,
+				// 区间内全无用量（如选了无数据的远古区间）也给出空态，而不是渲染全 0
+				(wnd.dateKeys.length === 0 || stats.total === 0) ? element("div", { className: "ust-warn" }, "当前时间范围没有数据") : null,
 				data.warnings && data.warnings.length > 0 ? element("div", { className: "ust-warn" }, data.warnings.join("；")) : null,
 				// 多日期窗口：日期柱状图点选联动下方「小时用量趋势」（同会话「用量」tab 的交互）；
 				// 单日期窗口本身就是小时口径，不传联动、不加第二块图。
@@ -2279,7 +2141,7 @@ window.__ModuleLoader__.load({
 				element(TopBoards, { insights: winInsights }),
 				element("div", { className: "ust-footer" },
 					element("div", { className: "ust-meta" },
-						loading ? "正在重新扫描全部会话…" : (data.generatedAt ? "数据更新于 " + fmtClock(data.generatedAt) : ""),
+						refreshing ? "正在重新扫描全部会话…" : (data.generatedAt ? "数据更新于 " + fmtClock(data.generatedAt) : ""),
 					),
 					element("div", { className: "ust-auto" },
 						element("label", { className: "ust-autoToggle", title: "开启后按所选间隔自动刷新数据" },
@@ -2299,12 +2161,13 @@ window.__ModuleLoader__.load({
 							}, sec + " 秒")),
 						) : null,
 					),
+
 					element("button", {
-						className: "ust-btn", disabled: loading, onClick: () => load(true, true),
+						className: "ust-btn", disabled: refreshing, onClick: () => load(true, true),
 						title: "重新扫描本机全部会话记录",
 					},
-						element("span", { className: "ust-btn-ico" + (loading ? " is-spin" : "") }, element(IconRefresh)),
-						loading ? "刷新中" : "刷新",
+						element("span", { className: "ust-btn-ico" + (refreshing ? " is-spin" : "") }, element(IconRefresh)),
+						refreshing ? "刷新中" : "刷新",
 					),
 				),
 			);
@@ -2334,6 +2197,7 @@ window.__ModuleLoader__.load({
 				setClosing(true);
 				setTimeout(onClose, 180);
 			}, [onClose]);
+
 			react.useEffect(() => {
 				const onKey = (e) => { if (e.key === "Escape") close(); };
 				window.addEventListener("keydown", onKey);
@@ -2531,7 +2395,8 @@ window.__ModuleLoader__.load({
 			// 充值：toppedUpBalance
 			const topped = ok && Number.isFinite(Number(snap.toppedUpBalance)) ? fmtBalance(snap.toppedUpBalance, currency) : null;
 			// 当前会话已花费：sessCost（宿主按会话聚合）。null = 未产生用量/未取到 → 显示「—」
-			const spent = sessCostReady && typeof sessCost === "number" ? fmtBalance(sessCost, currency) : null;
+			// 本会话花费是 CNY 口径（费用统计固定 CNY），不随 DeepSeek 账户币种变化——USD 账户不能把 CNY 标成 $
+			const spent = sessCostReady && typeof sessCost === "number" ? fmtCost(sessCost) : null;
 			const parts = [(granted ? "赠金 " + granted : null), (topped ? "充值 " + topped : null)].filter(Boolean).join(" · ");
 			const stamp = ok && snap.updatedAt ? fmtBalanceClock(snap.updatedAt) : "";
 
@@ -2630,6 +2495,7 @@ const [data, setData] = react.useState(null);
 			const [autoEvery, setAutoEvery] = react.useState(5);
 			// 日期联动：null = 未点选（小时趋势取跨天合并口径）；点选后取该天的小时分布
 			const [pickDate, setPickDate] = react.useState(null);
+
 			// 隐藏输入区：挂载加类、卸载移除，切回对话页输入框自动恢复
 			react.useEffect(() => {
 				document.body.classList.add("ust-sessview-on");
@@ -2645,6 +2511,7 @@ const [data, setData] = react.useState(null);
 					if (!json || json.ok === false) throw new Error((json && json.error) || "响应异常");
 					setData(json);
 					setError(null);
+					if (force) lastForceScanAt = Date.now(); // 强刷完成后才重新计时
 				} catch (e) {
 					setError(String((e && e.message) || e));
 				}
@@ -2660,7 +2527,8 @@ const [data, setData] = react.useState(null);
 					if (cancelled) return;
 					await load(false);
 					if (cancelled) return;
-					await load(true);
+					// 距上次强制扫描超过 30s 才真正强刷：快速切 tab 不反复触发全量扫描
+					if (Date.now() - lastForceScanAt > 30000) await load(true);
 				};
 				const id = typeof requestAnimationFrame === "function" ? requestAnimationFrame(run) : setTimeout(run, 0);
 				return () => {
@@ -2676,11 +2544,14 @@ const [data, setData] = react.useState(null);
 			}, [sessionId, autoRefresh, autoEvery, load]);
 			// 首屏加载态：数据未到位先画骨架，指标卡不显示 0（0 会被读成「本会话没有用量」）。
 			// 与主面板「用量统计」同款：先出界面、再填数据，冷启动不会卡住。
-			// 布局与正式视图逐段对齐，数据落定时原地替换，不跳动。const days = (data && data.days) || [];
+			// 布局与正式视图逐段对齐，数据落定时原地替换，不跳动。
+			const days = (data && data.days) || [];
 			// 全局色序：按全量 days 计算，不受时间范围影响 ——
 			// 与「用量统计」页取同一份，两个页面的图例颜色因此一致。
-			const globalRanks = react.useMemo(() => modelRanksIn(days, null), [days]);
-			// 日期趋势的模型顺序：小时趋势图例需要与之保持一致const sessionDays = days.map((d) => {
+			const globalRanks = react.useMemo(() => modelRanksIn(days, null), [days]);
+
+			// 日期趋势的模型顺序：小时趋势图例需要与之保持一致
+			const sessionDays = days.map((d) => {
 				const s = (d.sessions || []).find((x) => x.id === sessionId);
 				return {
 					date: d.date,
@@ -2701,18 +2572,7 @@ const [data, setData] = react.useState(null);
 			}), { total: 0, turns: 0, messages: 0, durationMs: 0 });
 			let sessCost = null;
 			const byModel = {};
-			active.forEach((d) => (d.byModel || []).forEach((m) => {
-				const bm = byModel[m.model] || { model: m.model, color: m.color, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
-				bm.input += m.input || 0; bm.output += m.output || 0;
-				bm.cacheRead += m.cacheRead || 0; bm.cacheWrite += m.cacheWrite || 0;
-				bm.total += m.total || 0;
-				// 费用按型号累加（同一次批处理的日均费用可加）；无价保持未定价，不用 0 冒充
-				if (typeof m.cost === "number") bm.cost = (bm.cost || 0) + m.cost;
-				// 费用按型号累加：cost 是「单价 × 该日四件套」的日均结果，可加；
-				// 无价（null/undefined）保持未定价，不用 0 冒充（0 会被读成免费）
-				if (!bm.color && m.color) bm.color = m.color;
-				byModel[m.model] = bm;
-			}));
+			active.forEach((d) => (d.byModel || []).forEach((m) => bumpModel(byModel, m)));
 			const allMetrics = sumMetrics(Object.values(byModel));
 			// 会话费用合计（CNY）：按 modelList 逐型号累加；无价为 null
 			{
@@ -2754,16 +2614,7 @@ const [data, setData] = react.useState(null);
 			// 顶层 byModel = 各小时桶逐模型合并：Trend 的图例序列取自 modelTotalsIn，
 			// 不补这层序列为空，柱子会整体归零（主面板单日窗口天然带 byModel，故无此问题）
 			const hourByModel = {};
-			hourBuckets.forEach((b) => (b.byModel || []).forEach((m) => {
-				const bm = hourByModel[m.model] || { model: m.model, color: m.color, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
-				bm.input += m.input || 0; bm.output += m.output || 0;
-				bm.cacheRead += m.cacheRead || 0; bm.cacheWrite += m.cacheWrite || 0;
-				bm.total += m.total || 0;
-				// 费用按型号累加（同一次批处理的日均费用可加）；无价保持未定价，不用 0 冒充
-				if (typeof m.cost === "number") bm.cost = (bm.cost || 0) + m.cost;
-				if (!bm.color && m.color) bm.color = m.color;
-				hourByModel[m.model] = bm;
-			}));
+			hourBuckets.forEach((b) => (b.byModel || []).forEach((m) => bumpModel(hourByModel, m)));
 			const hourDay = {
 				date: activeDate,
 				byModel: Object.values(hourByModel),
@@ -2783,7 +2634,8 @@ const [data, setData] = react.useState(null);
 			// 日期趋势窗口：只含有用量的天。只有一天时该图退化为一根柱、无横向对比意义，
 			// 故整块隐藏（见渲染处的 activeDates.length > 1 判断）。
 			const activeDates = sessionDays.filter((d) => d.total > 0).map((d) => d.date);
-			const dayWnd = { id: "day", label: "全部", dateKeys: activeDates };
+			const dayWnd = { id: "day", label: "全部", dateKeys: activeDates };
+
 
 			const dailySeriesOrder = react.useMemo(() => foldModels(modelTotalsIn(days, dayWnd), MODEL_FOLD, globalRanks).map(s => s.model), [days, dayWnd, globalRanks]);
 			if (!sessionId) return element("div", { className: "ust-placeholder" }, "打开一个会话后查看用量");
@@ -2864,6 +2716,7 @@ const [data, setData] = react.useState(null);
 				activeDates.length > 1
 					? element(Trend, {
 						days: sessionDays, window: dayWnd, ranks: globalRanks, title: "日期用量趋势", datePrefix: "", metric: metric, onMetricChange: setMetric,
+
 						showRangeLabel: false,
 						onPick: (d) => setPickDate((cur) => ((cur || autoPick) === d ? null : d)),
 						pickKey: effectivePick,

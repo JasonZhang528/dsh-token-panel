@@ -6,7 +6,7 @@
 
 **Covers: full-history session scan × usage trend × model dial × activity heatmap × session & provider breakdown × per-session "Usage" tab × light/dark themes**
 
-[![Version](https://img.shields.io/badge/Version-v0.2.4-1D5FD0?style=for-the-badge)](package.json)
+[![Version](https://img.shields.io/badge/Version-v0.2.8-1D5FD0?style=for-the-badge)](package.json)
 [![DSH Plugin](https://img.shields.io/badge/DSH-Plugin-0E7C86?style=for-the-badge)](#installation)
 [![Charts](https://img.shields.io/badge/Charts-Hand--written%20SVG-F59E0B?style=for-the-badge)](#design--implementation)
 [![License](https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge)](#license--credits)
@@ -49,12 +49,12 @@ A "Token ledger" built into the DSH sidebar. It scans your DSH session records a
 | 🏆 **Top 5 boards** | One row of three columns below session stats: **top plugins** (non-core tools), **top MCP** (merged by server) and **top skills** (parsed from the `skill` call arguments), five entries each with call counts |
 | 🔌 **Provider stats** | Aggregated by API provider: input / output / cache hits / total / hit rate / share / model breakdown; **click any row** for that provider's per-model usage and hit rate (also paginated beyond 10 models), **paginated beyond 10 rows** |
 | 🧮 **Top metrics** | Total tokens / peak day / longest session / current streak / longest streak |
-| ♻️ **Auto refresh** | On by default at 5 seconds (options: 5 / 10 / 30 / 60 seconds); **the page renders first and then fetches**, so a cold start never freezes |
+| ♻️ **Auto refresh** | On by default at 5 seconds (options: 5 / 10 / 30 / 60 seconds); **the page renders first and then fetches**, so a cold start never freezes; **paused while the page is hidden**, catches up on return; the footer shows data time, session count and last full-scan duration |
 | 💰 **Token cost** | Real unit prices converted to **CNY**: reuses the host's `prices-auto.json` (300+ models, auto-updated) plus a plugin supplement for models the host table lacks; USD at 7.2; **unpriced models are listed, never guessed**; visible at cumulative / window / session / provider / per-model level |
 | 💰 **Token cost** | Real unit prices converted to **CNY**: reuses the host's `prices-auto.json` (300+ models, auto-updated) plus a plugin supplement for models the host table lacks; USD at 7.2; **unpriced models are listed, never guessed**; visible at cumulative / window / session / provider / per-model level |
 | 📈 **Hit-rate line** | The date-usage trend overlays a **green** cache hit-rate line (right axis, 0-100%), drawn as a solid line so it reads differently from the bars; periods without usage break the line instead of dropping to 0% (0% would read as a terrible hit rate); it is hidden in cost mode and on the hourly trend (the bar height is already money / a single day is too noisy) |
 | 💫 **Refresh mask** | Clicking **Refresh** masks the content area (dimmed + blurred) with a centered loading indicator (shaped after Ant Design Spin); **manual refresh only** — auto refresh runs every 5 seconds, and masking that would flash every 5 seconds and cover the chart tooltips |
-| 🎯 **Legend focus** | Clicking any model in the chart legend shows **only that model's data** (other segments hidden, the Y axis rescaled to its magnitude, and the tooltip filtered to match); click again to restore. Far quicker than toggling every other model off |
+| 🎯 **Legend toggle** | Clicking any model in the chart legend shows **only that model's data** (other segments hidden, the Y axis rescaled to its magnitude, and the tooltip filtered to match); click again to restore. Far quicker than toggling every other model off |
 | 💬 **Conversation "Usage" tab** | Every session's conversation area gains a "Usage" view beside "Chat / Trajectory": that session's **date bar trend → click to drive the hourly bar trend**, model dial, top-5 boards, overview metrics and auto refresh; **today is selected by default** and the other bars dim for contrast; **single-day sessions hide the date chart** (nothing to compare) and keep only the hourly distribution |
 | ♿ **Accessibility** | WCAG AA contrast (audited per theme), `prefers-reduced-motion` fallback, transparent hit areas so even small dots are easy to hover |
 

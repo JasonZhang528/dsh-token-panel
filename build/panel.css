@@ -140,16 +140,11 @@ body[data-ds-dark-theme] .ust-tab.active { background: var(--ink); color: #19191
 .ust-hitcell { fill: transparent; cursor: pointer; }
 .ust-hitband { fill: transparent; cursor: pointer; }
 .ust-axis { font-size: 11px; font-weight: 500; fill: var(--muted); }
-.ust-axis-strong { font-size: 11px; font-weight: 650; fill: var(--ink); }
 .ust-grid { stroke: var(--rule); stroke-width: 1; }
 .ust-baseline { stroke: var(--faint); stroke-width: 1; }
-.ust-floor-tick { stroke: var(--rule); stroke-width: 1; }
-.ust-hair { fill: none; stroke-width: 2.7; stroke-linejoin: round; stroke-linecap: round; }
 .ust-dot { stroke: none; }
-.ust-dot-quiet { fill: var(--quiet); }
 .ust-cursor { stroke: var(--faint); stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
 .ust-hit { fill: transparent; cursor: crosshair; }
-.ust-callout { font-size: 11px; font-weight: 700; fill: var(--ink); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
 /* 柱顶数值：比轴标签略小、比峰值标注弱；描边保证压在柱体上也能读清 */
 .ust-bar-val {
 	font-size: 10px; font-weight: 600; fill: var(--muted);
@@ -272,8 +267,6 @@ body[data-ds-dark-theme] .ust-tab.active { background: var(--ink); color: #19191
 .ust-bar { stroke: none; }
 
 /* 柱状图容器 */
-.ust-charts { display: flex; flex-direction: column; gap: 2px; width: 100%; }
-.ust-plot.is-scroll .ust-charts { width: max-content; }
 
 /* ── 环形图 ─────────────────────────────────────────────── */
 /* 圆环与模型明细各占一半；容器过窄时自动换行回上下堆叠 */
@@ -507,7 +500,6 @@ body[data-ds-dark-theme] .ust-date::-webkit-calendar-picker-indicator { filter: 
 }
 
 /* tooltip portal 宿主（脱离面板 transform 包含块，才能用真正的视口坐标） */
-.ust-tipRoot { position: fixed; top: 0; left: 0; z-index: 10000; pointer-events: none; }
 
 /* ── 活跃热力图（GitHub 贡献网格风格） ── */
 .ust-gh-wrap { width: 100%; overflow-x: auto; overflow-y: hidden; padding: 4px 0 2px; display: flex; justify-content: center; }
@@ -666,8 +658,6 @@ body[data-ds-dark-theme] .ust-top-rank.is-five {
 .ust-top-name { flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ust-top-count { flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ust-top-empty { font-size: 12px; color: var(--faint); padding: 6px 0; }
-.ust-gh-legend { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
-.ust-gh-note { font-size: 12px; color: var(--muted, #5F5E59); font-variant-numeric: tabular-nums; }
 
 /* ── 会话统计 / 供应商统计（新表格） ── */
 .ust-tblWrap { overflow-x: auto; }
@@ -836,8 +826,3 @@ body[data-ds-dark-theme] .ust-line { fill: none; }
 .ust-balExtra{flex:none;color:var(--dsw-alias-label-tertiary,#81858C)}
 .ust-balPill.is-warn .ust-balValue,.ust-balPill.is-warn .ust-balLabel{color:var(--dsw-alias-state-error-primary,#CF1322)}
 .ust-balPill.is-pending .ust-balValue{color:var(--dsw-alias-label-tertiary,#81858C);font-weight:400}
-.ust-balIcon{display:inline-flex;width:12px;height:12px}
-.ust-balIcon svg{width:100%;height:100%}
-.ust-balIcon.is-spin{animation:ustBalSpin .7s linear infinite}
-@keyframes ustBalSpin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion: reduce){.ust-balIcon.is-spin{animation:none}}
